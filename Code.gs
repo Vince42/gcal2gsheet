@@ -75,7 +75,7 @@ function updateCalendarSheets() {
     }
 
     setProgress_(ss, 'Removing duplicates...');
-    finalRows = removeManagedDuplicates_(finalRows);
+    finalRows = removeManagedDuplicates_(finalRows, scope);
 
     setProgress_(ss, `Writing ${finalRows.length} row(s)...`);
     writeVisibleBody_(sheet, finalRows);

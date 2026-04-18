@@ -46,3 +46,23 @@ function isExistingRowInScope_(rowValues, scope) {
     end.getTime() <= scope.nowMillis
   );
 }
+
+function isExistingRowBeforeImportStart_(rowValues, scope) {
+  const start = rowValues[3];
+
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
+    return false;
+  }
+
+  return start.getTime() < scope.importStartMillis;
+}
+
+function isExistingRowAfterNow_(rowValues, scope) {
+  const start = rowValues[3];
+
+  if (!(start instanceof Date) || Number.isNaN(start.getTime())) {
+    return false;
+  }
+
+  return start.getTime() > scope.nowMillis;
+}

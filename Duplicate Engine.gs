@@ -1,8 +1,8 @@
-function removeManagedDuplicates_(rows) {
+function removeManagedDuplicates_(rows, scope) {
   const groups = new Map();
 
   rows.forEach((row, index) => {
-    if (!isRowManagedInScopeForDuplicateCheck_(row)) {
+    if (!isRowManagedInScopeForDuplicateCheck_(row, scope)) {
       return;
     }
 
@@ -73,8 +73,21 @@ function removeManagedDuplicates_(rows) {
   return rows.filter((row, index) => !removeIndexes.has(index));
 }
 
-function isRowManagedInScopeForDuplicateCheck_(row) {
-  return !!row.eventKey;
+function isRowManagedInScopeForDuplicateCheck_(row, scope) {
+  if (row.eventKey) {
+    return true;
+  }
+
+  if (!scope || !row || !row.values) {
+    return false;
+  }
+
+  const calendarName = toText_(row.values[0]);
+  if (!CONFIG.calendarNames.includes(calendarName)) {
+    return false;
+  }
+
+  return isExistingRowInScope_(row.values, scope);
 }
 
 function buildDuplicateKey_(rowValues) {

@@ -54,10 +54,18 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
           result.rowsByEventKey.set(eventKey, []);
         }
         result.rowsByEventKey.get(eventKey).push(row);
-      } else {
+      } else if (isExistingRowBeforeImportStart_(rowValues, scope)) {
         result.ignoredManagedRows.push(row);
       }
     } else if (!isCompletelyBlankRow_(rowValues)) {
+      const calendarName = toText_(rowValues[0]);
+      const looksLikeImportedCalendarRow = CONFIG.calendarNames.includes(calendarName);
+      const isFutureRow = isExistingRowAfterNow_(rowValues, scope);
+
+      if (looksLikeImportedCalendarRow && isFutureRow) {
+        continue;
+      }
+
       result.unmanagedRows.push({
         syntheticKey: `__UNMANAGED__${i + 2}`,
         rowKind: CONFIG.rowKind.unmanaged,
