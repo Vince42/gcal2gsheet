@@ -418,6 +418,7 @@ Required GitHub repository secrets:
 
 - `CLASPRC_JSON`  
   The full JSON contents of a valid `~/.clasprc.json` for `clasp`.
+  Base64-encoded JSON is also accepted.
 
 Configured target Script ID:
 
