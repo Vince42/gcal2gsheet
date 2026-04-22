@@ -9,6 +9,32 @@ function setProgress_(ss, message) {
   SpreadsheetApp.flush();
 }
 
+function showConfigDialog_() {
+  refreshConfig_();
+
+  const template = HtmlService.createTemplateFromFile('ConfigDialog');
+  template.model = getConfigForDialog_();
+  const html = template
+    .evaluate()
+    .setWidth(860)
+    .setHeight(700)
+    .setTitle('Calendar Import Configuration');
+
+  SpreadsheetApp.getUi().showModalDialog(html, 'Calendar Import Configuration');
+}
+
+function saveConfigDialog_(payload) {
+  const result = saveConfigFromDialog_(payload);
+  refreshConfig_();
+  return result;
+}
+
+function resetConfigDialog_() {
+  const result = resetConfigToDefault_();
+  refreshConfig_();
+  return result;
+}
+
 function captureUiState_(ss) {
   const activeSheet = ss.getActiveSheet();
   const activeRange = ss.getActiveRange();

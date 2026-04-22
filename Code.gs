@@ -1,11 +1,16 @@
 function onOpen() {
+  refreshConfig_();
+
   SpreadsheetApp.getUi()
     .createMenu(CONFIG.menu.title)
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
+    .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
     .addToUi();
 }
 
 function updateCalendarSheets() {
+  refreshConfig_();
+
   const lock = LockService.getDocumentLock();
   lock.waitLock(30000);
 
