@@ -95,11 +95,10 @@
   </head>
   <body>
     <div class="section">
-      <h3>Quick settings</h3>
       <div class="row">
         <label for="importStartDate">Import start date</label>
         <div>
-          <input id="importStartDate" type="date" />
+          <input id="importStartDate" type="text" placeholder="yyyy-mm-dd" />
           <div class="hint">ISO format: yyyy-mm-dd</div>
         </div>
       </div>
@@ -107,12 +106,12 @@
         <label for="calendarNames">Calendars</label>
         <div>
           <input id="calendarNames" type="text" />
-          <div class="hint">Comma-separated, e.g. Event, dedc, EEC, CTG</div>
+          <div class="hint">Comma-separated list of calendar names.</div>
         </div>
       </div>
-      <div class="row">
-        <label for="defaultCalendarName">Default calendar</label>
-        <input id="defaultCalendarName" type="text" />
+      <div class="hint">
+        The <code>defaultCalendarName</code> setting is still available in Advanced JSON and is used for
+        duplicate-precedence rules.
       </div>
     </div>
 
@@ -133,7 +132,8 @@
     <div id="status" class="status"></div>
 
     <script>
-      const model = <?= JSON.stringify(model) ?>;
+      const model = <?!= JSON.stringify(model) ?>;
+      let currentConfig = {};
 
       function setStatus(message, isError) {
         const node = document.getElementById('status');
@@ -141,47 +141,62 @@
         node.className = `status ${isError ? 'error' : 'ok'}`;
       }
 
+      function clone(value) {
+        return JSON.parse(JSON.stringify(value || {}));
+      }
+
       function configFromEditor() {
-        return JSON.parse(document.getElementById('configJson').value);
+        const parsed = JSON.parse(document.getElementById('configJson').value);
+        currentConfig = clone(parsed);
+        return parsed;
       }
 
       function syncQuickFieldsFromConfig(config) {
         document.getElementById('importStartDate').value = config.importStartDate || '';
         document.getElementById('calendarNames').value = (config.calendarNames || []).join(', ');
-        document.getElementById('defaultCalendarName').value = config.defaultCalendarName || '';
       }
 
-      function syncEditorFromQuickFields() {
-        const parsed = configFromEditor();
-        parsed.importStartDate = document.getElementById('importStartDate').value;
-        parsed.calendarNames = document.getElementById('calendarNames').value
+      function syncEditorFromCurrentConfig() {
+        document.getElementById('configJson').value = JSON.stringify(currentConfig, null, 2);
+      }
+
+      function syncCurrentConfigFromQuickFields() {
+        currentConfig.importStartDate = document.getElementById('importStartDate').value.trim();
+        currentConfig.calendarNames = document.getElementById('calendarNames').value
           .split(',')
           .map((v) => v.trim())
           .filter((v) => v);
-        parsed.defaultCalendarName = document.getElementById('defaultCalendarName').value.trim();
-        document.getElementById('configJson').value = JSON.stringify(parsed, null, 2);
+        syncEditorFromCurrentConfig();
       }
 
       function initialize() {
-        const config = model && model.config ? model.config : {};
-        document.getElementById('configJson').value = JSON.stringify(config, null, 2);
-        syncQuickFieldsFromConfig(config);
+        const config = model && model.config ? model.config : model && model.defaults ? model.defaults : {};
+        currentConfig = clone(config);
+        syncEditorFromCurrentConfig();
+        syncQuickFieldsFromConfig(currentConfig);
 
-        ['importStartDate', 'calendarNames', 'defaultCalendarName'].forEach((id) => {
-          document.getElementById(id).addEventListener('change', () => {
-            try {
-              syncEditorFromQuickFields();
-              setStatus('');
-            } catch (err) {
-              setStatus(`Invalid JSON in advanced editor: ${err.message}`, true);
-            }
+        ['importStartDate', 'calendarNames'].forEach((id) => {
+          document.getElementById(id).addEventListener('input', () => {
+            syncCurrentConfigFromQuickFields();
+            setStatus('');
           });
+        });
+
+        document.getElementById('configJson').addEventListener('input', () => {
+          try {
+            const parsed = JSON.parse(document.getElementById('configJson').value);
+            currentConfig = clone(parsed);
+            syncQuickFieldsFromConfig(currentConfig);
+            setStatus('');
+          } catch (err) {
+            setStatus(`Invalid JSON in advanced editor: ${err.message}`, true);
+          }
         });
       }
 
       function save() {
         try {
-          syncEditorFromQuickFields();
+          syncCurrentConfigFromQuickFields();
           const payload = { config: configFromEditor() };
           setStatus('Saving...', false);
           google.script.run
@@ -203,8 +218,9 @@
         google.script.run
           .withSuccessHandler(() => {
             const defaults = model && model.defaults ? model.defaults : {};
-            document.getElementById('configJson').value = JSON.stringify(defaults, null, 2);
-            syncQuickFieldsFromConfig(defaults);
+            currentConfig = clone(defaults);
+            syncEditorFromCurrentConfig();
+            syncQuickFieldsFromConfig(currentConfig);
             setStatus('Defaults restored and applied.', false);
           })
           .withFailureHandler((err) => {
