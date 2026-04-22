@@ -407,6 +407,7 @@ This repository includes a workflow to push source changes directly to Google Ap
 Workflow file:
 
 - `.github/workflows/apps-script-push.yml`
+- `appsscript.json` (required by `clasp push`)
 
 Security model:
 
