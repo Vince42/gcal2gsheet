@@ -207,7 +207,7 @@
             .withFailureHandler((err) => {
               setStatus(err && err.message ? err.message : String(err), true);
             })
-            .saveConfigDialog_(payload);
+            .saveConfigDialog(payload);
         } catch (err) {
           setStatus(err.message || String(err), true);
         }
@@ -226,7 +226,7 @@
           .withFailureHandler((err) => {
             setStatus(err && err.message ? err.message : String(err), true);
           })
-          .resetConfigDialog_();
+          .resetConfigDialog();
       }
 
       initialize();

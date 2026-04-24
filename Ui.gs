@@ -35,6 +35,14 @@ function resetConfigDialog_() {
   return result;
 }
 
+function saveConfigDialog(payload) {
+  return saveConfigDialog_(payload);
+}
+
+function resetConfigDialog() {
+  return resetConfigDialog_();
+}
+
 function captureUiState_(ss) {
   const activeSheet = ss.getActiveSheet();
   const activeRange = ss.getActiveRange();
