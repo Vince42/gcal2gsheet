@@ -74,20 +74,7 @@ function removeManagedDuplicates_(rows, scope) {
 }
 
 function isRowManagedInScopeForDuplicateCheck_(row, scope) {
-  if (row.eventKey) {
-    return true;
-  }
-
-  if (!scope || !row || !row.values) {
-    return false;
-  }
-
-  const calendarName = toText_(row.values[0]);
-  if (!CONFIG.calendarNames.includes(calendarName)) {
-    return false;
-  }
-
-  return isExistingRowInScope_(row.values, scope);
+  return !!(row && row.eventKey);
 }
 
 function buildDuplicateKey_(rowValues) {
