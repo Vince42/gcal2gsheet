@@ -1,5 +1,7 @@
 function buildScope_() {
-  const importStart = parseImportStartDate_(CONFIG.importStartDate);
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const timeZone = ss ? ss.getSpreadsheetTimeZone() : 'Etc/UTC';
+  const importStart = parseImportStartDate_(CONFIG.importStartDate, timeZone);
   const now = new Date();
 
   return {
@@ -10,7 +12,7 @@ function buildScope_() {
   };
 }
 
-function parseImportStartDate_(value) {
+function parseImportStartDate_(value, timeZone) {
   if (typeof value !== 'string') {
     throw new Error(
       `Invalid CONFIG.importStartDate: "${value}". Use ISO date format YYYY-MM-DD (example: 2024-01-01).`
@@ -28,10 +30,8 @@ function parseImportStartDate_(value) {
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
-  const date = new Date(Date.UTC(year, month - 1, day));
-  const isRealDate = date.getUTCFullYear() === year
-    && date.getUTCMonth() === month - 1
-    && date.getUTCDate() === day;
+  const date = buildMidnightForTimeZone_(year, month, day, timeZone || 'Etc/UTC');
+  const isRealDate = date instanceof Date && !Number.isNaN(date.getTime());
   if (!isRealDate) {
     throw new Error(
       `Invalid CONFIG.importStartDate: "${value}" is not a real calendar date. Use YYYY-MM-DD (example: 2024-01-01).`
@@ -39,6 +39,31 @@ function parseImportStartDate_(value) {
   }
 
   return date;
+}
+
+function buildMidnightForTimeZone_(year, month, day, timeZone) {
+  let guessUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0);
+  for (let i = 0; i < 3; i += 1) {
+    const offsetMinutes = parseTzOffsetMinutes_(Utilities.formatDate(new Date(guessUtcMs), timeZone, 'Z'));
+    const nextGuessUtcMs = Date.UTC(year, month - 1, day, 0, 0, 0) - offsetMinutes * 60000;
+    if (nextGuessUtcMs === guessUtcMs) {
+      break;
+    }
+    guessUtcMs = nextGuessUtcMs;
+  }
+  return new Date(guessUtcMs);
+}
+
+function parseTzOffsetMinutes_(offset) {
+  const text = String(offset || '').trim();
+  const match = /^([+-])(\d{2})(\d{2})$/.exec(text);
+  if (!match) {
+    throw new Error(`Invalid timezone offset "${offset}".`);
+  }
+  const sign = match[1] === '-' ? -1 : 1;
+  const hours = Number(match[2]);
+  const minutes = Number(match[3]);
+  return sign * (hours * 60 + minutes);
 }
 
 function isManagedEventInScope_(eventObj, scope) {

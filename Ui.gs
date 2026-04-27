@@ -11,7 +11,11 @@ function setProgress_(ss, message) {
 
 function showConfigDialog_() {
   const template = HtmlService.createTemplateFromFile('ConfigDialog');
-  template.model = getConfigForDialog_();
+  template.modelJson = JSON.stringify(getConfigForDialog_())
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/'/g, '\\u0027');
   const html = template
     .evaluate()
     .setWidth(860)

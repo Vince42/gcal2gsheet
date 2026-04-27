@@ -157,6 +157,7 @@ No agent may commit unless every gate below is explicitly checked in the PR note
 1. **Scope gate**
    - config scope-affecting fields (`importStartDate`, `calendarNames`, `defaultCalendarName`) correctly trigger sync-token invalidation
    - config save compares against persisted config state, not stale in-memory state
+   - import-start boundary is built in spreadsheet timezone (not forced UTC midnight)
 
 2. **Recovery gate**
    - `onOpen()` always creates menu even if config is invalid
@@ -170,9 +171,11 @@ No agent may commit unless every gate below is explicitly checked in the PR note
    - no credentials/tokens are committed
    - any credential-like file must be covered by `.gitignore`
    - CI auth must come from secrets/environment, never hardcoded repo files
+   - HTML template model injection must be script-safe escaped (no raw unescaped `<?!=` JSON in `<script>` blocks)
 
 5. **Quality gate**
    - run at least `git diff --check` and confirm a clean working tree after commit
+   - run `bash scripts/preflight-review.sh` before commit/PR publication
    - include explicit file/line citations for behavioral changes in final report
 
 ## Agent roles and enforcement

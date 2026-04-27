@@ -132,7 +132,7 @@
     <div id="status" class="status"></div>
 
     <script>
-      const model = <?!= JSON.stringify(model) ?>;
+      const model = JSON.parse('<?= modelJson ?>');
       let currentConfig = {};
 
       function setStatus(message, isError) {
