@@ -16,6 +16,7 @@ Any automated coding agent must preserve that separation.
 - Do not remove the Google Sheets native table object unless explicitly requested.
 - Preserve the main callable function `updateCalendarSheets()`.
 - Preserve menu creation in `onOpen()`.
+- `onOpen()` must always add the custom menu, even when configuration is invalid, so users retain recovery access to the configuration dialog.
 - Keep bulk sheet writes preferred over row-by-row writes.
 - Treat correctness as more important than clever optimization.
 - Avoid speculative fixes. Trace the logic path first.
@@ -148,3 +149,35 @@ When behavior is wrong:
 - visible and hidden sheets remain row-aligned
 - table range still matches visible data
 - date and time columns remain real spreadsheet values
+
+## Mandatory release gates (must pass before commit)
+
+No agent may commit unless every gate below is explicitly checked in the PR notes:
+
+1. **Scope gate**
+   - config scope-affecting fields (`importStartDate`, `calendarNames`, `defaultCalendarName`) correctly trigger sync-token invalidation
+   - config save compares against persisted config state, not stale in-memory state
+
+2. **Recovery gate**
+   - `onOpen()` always creates menu even if config is invalid
+   - configuration dialog remains reachable for in-sheet recovery
+
+3. **Data safety gate**
+   - invalid config handling does not silently reset unrelated fields to defaults
+   - existing user sheets/tabs and user-owned named ranges are never clobbered by config initialization
+
+4. **Security gate**
+   - no credentials/tokens are committed
+   - any credential-like file must be covered by `.gitignore`
+   - CI auth must come from secrets/environment, never hardcoded repo files
+
+5. **Quality gate**
+   - run at least `git diff --check` and confirm a clean working tree after commit
+   - include explicit file/line citations for behavioral changes in final report
+
+## Agent roles and enforcement
+
+- **implementation agent**: writes the smallest correct fix in the responsible module.
+- **review agent**: blocks commit if any mandatory release gate is not satisfied.
+- **security agent**: blocks commit if credentials handling violates Security gate.
+- **release agent**: blocks PR publication unless checks and evidence are documented.
