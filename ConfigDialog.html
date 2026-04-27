@@ -175,6 +175,15 @@
         syncEditorFromCurrentConfig();
         syncQuickFieldsFromConfig(currentConfig);
 
+        if (model && model.validation && model.validation.message) {
+          setStatus(
+            model.validation.isValid
+              ? `Configuration status: ${model.validation.message}`
+              : `Configuration status: ${model.validation.message}`,
+            !model.validation.isValid
+          );
+        }
+
         ['importStartDate', 'calendarNames'].forEach((id) => {
           document.getElementById(id).addEventListener('input', () => {
             syncCurrentConfigFromQuickFields();

@@ -49,36 +49,39 @@ const DEFAULT_CONFIG = Object.freeze({
   toastTitle: 'Calendar import',
 });
 
+const CONFIG_SHEET_SPEC = Object.freeze({
+  name: 'Config',
+  ranges: {
+    json: 'CFG_JSON',
+    importStartDate: 'CFG_IMPORT_START_DATE',
+    calendarNames: 'CFG_CALENDAR_NAMES',
+    defaultCalendarName: 'CFG_DEFAULT_CALENDAR_NAME',
+    validity: 'CFG_VALIDITY',
+  },
+});
+
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
 function refreshConfig_() {
-  const props = getConfigPropertiesStore_();
-  const raw = props.getProperty(DEFAULT_CONFIG.configPropertyKey);
-
-  if (!raw) {
-    CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
-    return CONFIG;
+  const state = readConfigStateFromSheet_();
+  if (!state.isValid) {
+    throw new Error(state.message);
   }
 
-  let parsed;
-  try {
-    parsed = JSON.parse(raw);
-  } catch (error) {
-    throw new Error(`Invalid saved configuration JSON: ${error.message}`);
-  }
-
-  const merged = mergeConfigWithDefaults_(parsed || {});
-  validateConfig_(merged);
-  CONFIG = freezeConfigCopy_(merged);
+  CONFIG = freezeConfigCopy_(state.config);
   return CONFIG;
 }
 
 function getConfigForDialog_() {
-  const current = refreshConfig_();
+  const state = readConfigStateFromSheet_();
 
   return {
-    config: cloneConfig_(current),
+    config: cloneConfig_(state.config),
     defaults: cloneConfig_(DEFAULT_CONFIG),
+    validation: {
+      isValid: state.isValid,
+      message: state.message,
+    },
   };
 }
 
@@ -91,9 +94,9 @@ function saveConfigFromDialog_(payload) {
   validateConfig_(basicConfig);
   const previousConfig = cloneConfig_(CONFIG);
   const scopeChanged = hasScopeAffectingConfigChange_(previousConfig, basicConfig);
+  writeConfigToSheet_(basicConfig);
 
   const props = getConfigPropertiesStore_();
-  props.setProperty(DEFAULT_CONFIG.configPropertyKey, JSON.stringify(basicConfig));
   if (scopeChanged) {
     clearSyncTokenProperties_(props, [
       DEFAULT_CONFIG.propertyPrefix,
@@ -107,10 +110,128 @@ function saveConfigFromDialog_(payload) {
 }
 
 function resetConfigToDefault_() {
+  writeConfigToSheet_(cloneConfig_(DEFAULT_CONFIG));
+
   const props = getConfigPropertiesStore_();
-  props.deleteProperty(DEFAULT_CONFIG.configPropertyKey);
+  clearSyncTokenProperties_(props, [DEFAULT_CONFIG.propertyPrefix, CONFIG.propertyPrefix]);
+
   CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
   return { success: true };
+}
+
+function readConfigStateFromSheet_() {
+  const refs = ensureConfigSheetAndRanges_();
+  const jsonRaw = toText_(refs.namedRanges.json.getValue()).trim();
+  const importStartDateOverride = toText_(refs.namedRanges.importStartDate.getValue()).trim();
+  const calendarNamesOverride = toText_(refs.namedRanges.calendarNames.getValue()).trim();
+  const defaultCalendarNameOverride = toText_(refs.namedRanges.defaultCalendarName.getValue()).trim();
+
+  let parsedConfig;
+  let validationMessage;
+  try {
+    parsedConfig = jsonRaw ? JSON.parse(jsonRaw) : cloneConfig_(DEFAULT_CONFIG);
+  } catch (error) {
+    parsedConfig = cloneConfig_(DEFAULT_CONFIG);
+    validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}`;
+  }
+
+  if (importStartDateOverride) {
+    parsedConfig.importStartDate = importStartDateOverride;
+  }
+  if (calendarNamesOverride) {
+    parsedConfig.calendarNames = calendarNamesOverride
+      .split(',')
+      .map((v) => v.trim())
+      .filter((v) => v);
+  }
+  if (defaultCalendarNameOverride) {
+    parsedConfig.defaultCalendarName = defaultCalendarNameOverride;
+  }
+
+  const merged = mergeConfigWithDefaults_(parsedConfig || {});
+  if (!validationMessage) {
+    try {
+      validateConfig_(merged);
+      validationMessage = 'VALID';
+    } catch (error) {
+      validationMessage = error.message;
+    }
+  }
+
+  const isValid = validationMessage === 'VALID';
+  refs.namedRanges.validity.setValue(validationMessage);
+
+  return {
+    isValid,
+    message: validationMessage,
+    config: isValid ? merged : cloneConfig_(DEFAULT_CONFIG),
+  };
+}
+
+function writeConfigToSheet_(config) {
+  const refs = ensureConfigSheetAndRanges_();
+  refs.namedRanges.json.setValue(JSON.stringify(config, null, 2));
+  refs.namedRanges.importStartDate.setValue(config.importStartDate || '');
+  refs.namedRanges.calendarNames.setValue((config.calendarNames || []).join(', '));
+  refs.namedRanges.defaultCalendarName.setValue(config.defaultCalendarName || '');
+  refs.namedRanges.validity.setValue('VALID');
+}
+
+function ensureConfigSheetAndRanges_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('No active spreadsheet available.');
+  }
+
+  let sheet = ss.getSheetByName(CONFIG_SHEET_SPEC.name);
+  if (!sheet) {
+    sheet = ss.insertSheet(CONFIG_SHEET_SPEC.name);
+  }
+  if (!sheet.isSheetHidden()) {
+    sheet.hideSheet();
+  }
+
+  const layout = [
+    ['Key', 'Value'],
+    ['ConfigJson', ''],
+    ['ImportStartDate', ''],
+    ['CalendarNames', ''],
+    ['DefaultCalendarName', ''],
+    ['Validity', ''],
+  ];
+
+  const current = sheet.getRange(1, 1, layout.length, 1).getValues();
+  const keysNeedWrite = layout.some((row, i) => current[i][0] !== row[0]);
+  if (keysNeedWrite) {
+    sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
+  }
+
+  function ensureNamedRange(name, row, col) {
+    const range = sheet.getRange(row, col, 1, 1);
+    const existing = ss.getRangeByName(name);
+    if (!existing || existing.getA1Notation() !== range.getA1Notation() || existing.getSheet().getSheetId() !== sheet.getSheetId()) {
+      ss.setNamedRange(name, range);
+    }
+    return ss.getRangeByName(name);
+  }
+
+  const namedRanges = {
+    json: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.json, 2, 2),
+    importStartDate: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.importStartDate, 3, 2),
+    calendarNames: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.calendarNames, 4, 2),
+    defaultCalendarName: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 5, 2),
+    validity: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.validity, 6, 2),
+  };
+
+  if (toText_(namedRanges.json.getValue()).trim() === '') {
+    namedRanges.json.setValue(JSON.stringify(DEFAULT_CONFIG, null, 2));
+    namedRanges.importStartDate.setValue(DEFAULT_CONFIG.importStartDate);
+    namedRanges.calendarNames.setValue(DEFAULT_CONFIG.calendarNames.join(', '));
+    namedRanges.defaultCalendarName.setValue(DEFAULT_CONFIG.defaultCalendarName);
+    namedRanges.validity.setValue('VALID');
+  }
+
+  return { sheet, namedRanges };
 }
 
 function getConfigPropertiesStore_() {
