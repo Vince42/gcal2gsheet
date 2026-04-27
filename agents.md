@@ -16,6 +16,7 @@ Any automated coding agent must preserve that separation.
 - Do not remove the Google Sheets native table object unless explicitly requested.
 - Preserve the main callable function `updateCalendarSheets()`.
 - Preserve menu creation in `onOpen()`.
+- `onOpen()` must always add the custom menu, even when configuration is invalid, so users retain recovery access to the configuration dialog.
 - Keep bulk sheet writes preferred over row-by-row writes.
 - Treat correctness as more important than clever optimization.
 - Avoid speculative fixes. Trace the logic path first.
