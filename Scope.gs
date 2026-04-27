@@ -11,11 +11,34 @@ function buildScope_() {
 }
 
 function parseImportStartDate_(value) {
-  if (!value || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
-    throw new Error(`Invalid CONFIG.importStartDate: ${value}`);
+  if (typeof value !== 'string') {
+    throw new Error(
+      `Invalid CONFIG.importStartDate: "${value}". Use ISO date format YYYY-MM-DD (example: 2024-01-01).`
+    );
   }
 
-  return new Date(`${value}T00:00:00`);
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) {
+    throw new Error(
+      `Invalid CONFIG.importStartDate: "${value}". Use ISO date format YYYY-MM-DD (example: 2024-01-01).`
+    );
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  const isRealDate = date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day;
+  if (!isRealDate) {
+    throw new Error(
+      `Invalid CONFIG.importStartDate: "${value}" is not a real calendar date. Use YYYY-MM-DD (example: 2024-01-01).`
+    );
+  }
+
+  return date;
 }
 
 function isManagedEventInScope_(eventObj, scope) {

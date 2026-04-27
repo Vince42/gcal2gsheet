@@ -122,7 +122,10 @@ function resetConfigToDefault_() {
 function readConfigStateFromSheet_() {
   const refs = ensureConfigSheetAndRanges_();
   const jsonRaw = toText_(refs.namedRanges.json.getValue()).trim();
-  const importStartDateOverride = toText_(refs.namedRanges.importStartDate.getValue()).trim();
+  const importStartDateOverride = normalizeDateCellToIsoOrText_(
+    refs.namedRanges.importStartDate.getValue(),
+    SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()
+  );
   const calendarNamesOverride = toText_(refs.namedRanges.calendarNames.getValue()).trim();
   const defaultCalendarNameOverride = toText_(refs.namedRanges.defaultCalendarName.getValue()).trim();
 
@@ -238,9 +241,15 @@ function getConfigPropertiesStore_() {
   try {
     return PropertiesService.getDocumentProperties();
   } catch (error) {
-    const message = error && error.message ? String(error.message) : String(error);
-    if (message.toUpperCase().includes('PERMISSION_DENIED')) {
-      return PropertiesService.getScriptProperties();
+    if (isPermissionDeniedError_(error)) {
+      try {
+        return PropertiesService.getScriptProperties();
+      } catch (scriptError) {
+        if (isPermissionDeniedError_(scriptError)) {
+          return getNoopPropertiesStore_();
+        }
+        throw scriptError;
+      }
     }
     throw error;
   }
@@ -257,7 +266,11 @@ function hasScopeAffectingConfigChange_(previousConfig, nextConfig) {
 
   const previousCalendars = (previousConfig.calendarNames || []).join('\n');
   const nextCalendars = (nextConfig.calendarNames || []).join('\n');
-  return previousCalendars !== nextCalendars;
+  if (previousCalendars !== nextCalendars) {
+    return true;
+  }
+
+  return previousConfig.defaultCalendarName !== nextConfig.defaultCalendarName;
 }
 
 function clearSyncTokenProperties_(props, prefixes) {
@@ -311,10 +324,9 @@ function validateConfig_(config) {
   assertString_(config.stateSheetName, 'stateSheetName');
   assertString_(config.tableName, 'tableName');
   assertString_(config.statusCell, 'statusCell');
+  assertString_(config.importStartDate, 'importStartDate');
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(config.importStartDate)) {
-    throw new Error(`Invalid importStartDate: ${config.importStartDate}`);
-  }
+  assertStrictIsoDate_(config.importStartDate, 'importStartDate');
 
   assertStringArray_(config.calendarNames, 'calendarNames');
   assertString_(config.defaultCalendarName, 'defaultCalendarName');
@@ -372,6 +384,29 @@ function assertString_(value, fieldName) {
   }
 }
 
+function assertStrictIsoDate_(value, fieldName) {
+  const trimmed = value.trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!match) {
+    throw new Error(
+      `Invalid ${fieldName}: "${value}". Use ISO date format YYYY-MM-DD (example: 2024-01-01).`
+    );
+  }
+
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const utcDate = new Date(Date.UTC(year, month - 1, day));
+  const isRealDate = utcDate.getUTCFullYear() === year
+    && utcDate.getUTCMonth() === month - 1
+    && utcDate.getUTCDate() === day;
+  if (!isRealDate) {
+    throw new Error(
+      `Invalid ${fieldName}: "${value}" is not a real calendar date. Use format YYYY-MM-DD (example: 2024-01-01).`
+    );
+  }
+}
+
 function assertStringArray_(value, fieldName) {
   if (!Array.isArray(value) || value.length === 0) {
     throw new Error(`Invalid ${fieldName}: expected a non-empty string array.`);
@@ -409,4 +444,30 @@ function cloneConfig_(value) {
 
 function freezeConfigCopy_(config) {
   return Object.freeze(cloneConfig_(config));
+}
+
+function normalizeDateCellToIsoOrText_(value, timeZone) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return Utilities.formatDate(value, timeZone || 'Etc/UTC', 'yyyy-MM-dd');
+  }
+  return toText_(value).trim();
+}
+
+function isPermissionDeniedError_(error) {
+  const message = error && error.message ? String(error.message) : String(error);
+  return message.toUpperCase().includes('PERMISSION_DENIED');
+}
+
+function getNoopPropertiesStore_() {
+  return {
+    getProperty() {
+      return '';
+    },
+    setProperty() {},
+    getProperties() {
+      return {};
+    },
+    setProperties() {},
+    deleteProperty() {},
+  };
 }
