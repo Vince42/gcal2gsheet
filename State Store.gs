@@ -56,6 +56,10 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
         result.rowsByEventKey.get(eventKey).push(row);
       } else if (isExistingRowBeforeImportStart_(rowValues, scope)) {
         result.ignoredManagedRows.push(row);
+      } else {
+        // Preserve managed rows that are currently outside active scope (for example,
+        // after manual date edits or invalid date cell states) to avoid data loss.
+        result.ignoredManagedRows.push(row);
       }
     } else if (!isCompletelyBlankRow_(rowValues)) {
       const calendarName = toText_(rowValues[0]);

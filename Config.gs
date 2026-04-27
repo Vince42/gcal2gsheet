@@ -155,10 +155,16 @@ function validateConfig_(config) {
     'header',
     DEFAULT_CONFIG.header.length
   );
+  assertExactArrayMatch_(config.header, DEFAULT_CONFIG.header, 'header');
   assertStringArrayWithLength_(
     config.stateHeader,
     'stateHeader',
     DEFAULT_CONFIG.stateHeader.length
+  );
+  assertExactArrayMatch_(
+    config.stateHeader,
+    DEFAULT_CONFIG.stateHeader,
+    'stateHeader'
   );
 
   if (!config.rowKind || typeof config.rowKind !== 'object') {
@@ -212,6 +218,16 @@ function assertStringArrayWithLength_(value, fieldName, expectedLength) {
     throw new Error(
       `Invalid ${fieldName}: expected exactly ${expectedLength} item(s), got ${value.length}.`
     );
+  }
+}
+
+function assertExactArrayMatch_(value, expected, fieldName) {
+  for (let i = 0; i < expected.length; i += 1) {
+    if (value[i] !== expected[i]) {
+      throw new Error(
+        `Invalid ${fieldName}: structural reordering is not supported. Expected "${expected[i]}" at position ${i + 1}.`
+      );
+    }
   }
 }
 
