@@ -50,7 +50,8 @@ const DEFAULT_CONFIG = Object.freeze({
 });
 
 const CONFIG_SHEET_SPEC = Object.freeze({
-  name: 'Config',
+  legacyName: 'Config',
+  technicalName: '_gcal2gsheet_config',
   ranges: {
     json: 'CFG_JSON',
     importStartDate: 'CFG_IMPORT_START_DATE',
@@ -92,8 +93,10 @@ function saveConfigFromDialog_(payload) {
 
   const basicConfig = mergeConfigWithDefaults_(payload.config || {});
   validateConfig_(basicConfig);
-  const previousConfig = cloneConfig_(CONFIG);
-  const scopeChanged = hasScopeAffectingConfigChange_(previousConfig, basicConfig);
+  const persistedState = readConfigStateFromSheet_();
+  const previousConfig = cloneConfig_(persistedState.config);
+  const scopeChanged = !persistedState.isValid
+    || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
   writeConfigToSheet_(basicConfig);
 
   const props = getConfigPropertiesStore_();
@@ -186,10 +189,7 @@ function ensureConfigSheetAndRanges_() {
     throw new Error('No active spreadsheet available.');
   }
 
-  let sheet = ss.getSheetByName(CONFIG_SHEET_SPEC.name);
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG_SHEET_SPEC.name);
-  }
+  let sheet = resolveManagedConfigSheet_(ss);
   if (!sheet.isSheetHidden()) {
     sheet.hideSheet();
   }
@@ -235,6 +235,30 @@ function ensureConfigSheetAndRanges_() {
   }
 
   return { sheet, namedRanges };
+}
+
+function resolveManagedConfigSheet_(ss) {
+  const technicalSheet = ss.getSheetByName(CONFIG_SHEET_SPEC.technicalName);
+  if (technicalSheet) {
+    return technicalSheet;
+  }
+
+  const legacySheet = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
+  if (legacySheet && isOwnedConfigSheet_(ss, legacySheet)) {
+    return legacySheet;
+  }
+
+  return ss.insertSheet(CONFIG_SHEET_SPEC.technicalName);
+}
+
+function isOwnedConfigSheet_(ss, sheet) {
+  const namedRangeNames = Object.keys(CONFIG_SHEET_SPEC.ranges).map(
+    (key) => CONFIG_SHEET_SPEC.ranges[key]
+  );
+  return namedRangeNames.every((name) => {
+    const range = ss.getRangeByName(name);
+    return range && range.getSheet().getSheetId() === sheet.getSheetId();
+  });
 }
 
 function getConfigPropertiesStore_() {
