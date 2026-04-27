@@ -52,7 +52,7 @@ const DEFAULT_CONFIG = Object.freeze({
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
 function refreshConfig_() {
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
   const raw = props.getProperty(DEFAULT_CONFIG.configPropertyKey);
 
   if (!raw) {
@@ -89,19 +89,70 @@ function saveConfigFromDialog_(payload) {
 
   const basicConfig = mergeConfigWithDefaults_(payload.config || {});
   validateConfig_(basicConfig);
+  const previousConfig = cloneConfig_(CONFIG);
+  const scopeChanged = hasScopeAffectingConfigChange_(previousConfig, basicConfig);
 
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
   props.setProperty(DEFAULT_CONFIG.configPropertyKey, JSON.stringify(basicConfig));
+  if (scopeChanged) {
+    clearSyncTokenProperties_(props, [
+      DEFAULT_CONFIG.propertyPrefix,
+      previousConfig.propertyPrefix,
+      basicConfig.propertyPrefix,
+    ]);
+  }
 
   CONFIG = freezeConfigCopy_(basicConfig);
   return { success: true };
 }
 
 function resetConfigToDefault_() {
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
   props.deleteProperty(DEFAULT_CONFIG.configPropertyKey);
   CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
   return { success: true };
+}
+
+function getConfigPropertiesStore_() {
+  try {
+    return PropertiesService.getDocumentProperties();
+  } catch (error) {
+    const message = error && error.message ? String(error.message) : String(error);
+    if (message.toUpperCase().includes('PERMISSION_DENIED')) {
+      return PropertiesService.getScriptProperties();
+    }
+    throw error;
+  }
+}
+
+function hasScopeAffectingConfigChange_(previousConfig, nextConfig) {
+  if (!previousConfig) {
+    return true;
+  }
+
+  if (previousConfig.importStartDate !== nextConfig.importStartDate) {
+    return true;
+  }
+
+  const previousCalendars = (previousConfig.calendarNames || []).join('\n');
+  const nextCalendars = (nextConfig.calendarNames || []).join('\n');
+  return previousCalendars !== nextCalendars;
+}
+
+function clearSyncTokenProperties_(props, prefixes) {
+  const uniquePrefixes = Array.from(
+    new Set((prefixes || []).filter((prefix) => typeof prefix === 'string' && prefix.length > 0))
+  );
+  if (uniquePrefixes.length === 0) {
+    return;
+  }
+
+  const allProps = props.getProperties();
+  Object.keys(allProps).forEach((key) => {
+    if (uniquePrefixes.some((prefix) => key.startsWith(prefix))) {
+      props.deleteProperty(key);
+    }
+  });
 }
 
 function mergeConfigWithDefaults_(overrideConfig) {

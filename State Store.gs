@@ -62,14 +62,6 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
         result.ignoredManagedRows.push(row);
       }
     } else if (!isCompletelyBlankRow_(rowValues)) {
-      const calendarName = toText_(rowValues[0]);
-      const looksLikeImportedCalendarRow = CONFIG.calendarNames.includes(calendarName);
-      const isFutureRow = isExistingRowAfterNow_(rowValues, scope);
-
-      if (looksLikeImportedCalendarRow && isFutureRow) {
-        continue;
-      }
-
       result.unmanagedRows.push({
         syntheticKey: `__UNMANAGED__${i + 2}`,
         rowKind: CONFIG.rowKind.unmanaged,
@@ -84,7 +76,7 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
 }
 
 function loadSyncTokens_(calendars) {
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
 
   return calendars.map((calendarInfo) => {
     return {
@@ -95,7 +87,7 @@ function loadSyncTokens_(calendars) {
 }
 
 function saveSyncTokens_(tokensByCalendarId) {
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
   const payload = {};
 
   Object.keys(tokensByCalendarId).forEach((calendarId) => {
@@ -106,7 +98,7 @@ function saveSyncTokens_(tokensByCalendarId) {
 }
 
 function clearSyncTokens_(calendars) {
-  const props = PropertiesService.getDocumentProperties();
+  const props = getConfigPropertiesStore_();
 
   calendars.forEach((calendarInfo) => {
     props.deleteProperty(CONFIG.propertyPrefix + calendarInfo.id);
