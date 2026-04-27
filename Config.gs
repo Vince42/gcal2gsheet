@@ -150,8 +150,16 @@ function validateConfig_(config) {
     throw new Error('defaultCalendarName must exist in calendarNames.');
   }
 
-  assertStringArray_(config.header, 'header');
-  assertStringArray_(config.stateHeader, 'stateHeader');
+  assertStringArrayWithLength_(
+    config.header,
+    'header',
+    DEFAULT_CONFIG.header.length
+  );
+  assertStringArrayWithLength_(
+    config.stateHeader,
+    'stateHeader',
+    DEFAULT_CONFIG.stateHeader.length
+  );
 
   if (!config.rowKind || typeof config.rowKind !== 'object') {
     throw new Error('Invalid rowKind object.');
@@ -196,6 +204,15 @@ function assertStringArray_(value, fieldName) {
       throw new Error(`Invalid ${fieldName}[${index}].`);
     }
   });
+}
+
+function assertStringArrayWithLength_(value, fieldName, expectedLength) {
+  assertStringArray_(value, fieldName);
+  if (value.length !== expectedLength) {
+    throw new Error(
+      `Invalid ${fieldName}: expected exactly ${expectedLength} item(s), got ${value.length}.`
+    );
+  }
 }
 
 function cloneConfig_(value) {
