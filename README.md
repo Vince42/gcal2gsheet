@@ -397,3 +397,34 @@ Possible future extensions:
 - import of Google Calendar description field in addition to event title
 - configurable status cell
 - stricter validation of manual row edits
+
+---
+
+## Automated push to Apps Script (GitHub Actions)
+
+This repository includes a workflow to push source changes directly to Google Apps Script on every push to `main` (and manually via `workflow_dispatch`).
+
+Workflow file:
+
+- `.github/workflows/apps-script-push.yml`
+- `appsscript.json` (required by `clasp push`)
+
+Security model:
+
+- credentials are never committed to the repository
+- local credential files are ignored by `.gitignore` (`.clasp.json`, `.clasprc.json`)
+- CI receives credentials only via GitHub Secrets
+
+Required GitHub repository secrets:
+
+- `CLASPRC_JSON`  
+  The full JSON contents of a valid `~/.clasprc.json` for `clasp`.
+  Base64-encoded JSON is also accepted.
+
+Configured target Script ID:
+
+- `1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC`
+
+Optional safety recommendation:
+
+- protect the `main` branch so only reviewed merges trigger production pushes
