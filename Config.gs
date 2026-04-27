@@ -170,7 +170,7 @@ function readConfigStateFromSheet_() {
   return {
     isValid,
     message: validationMessage,
-    config: isValid ? merged : cloneConfig_(DEFAULT_CONFIG),
+    config: merged,
   };
 }
 
@@ -209,21 +209,12 @@ function ensureConfigSheetAndRanges_() {
     sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
   }
 
-  function ensureNamedRange(name, row, col) {
-    const range = sheet.getRange(row, col, 1, 1);
-    const existing = ss.getRangeByName(name);
-    if (!existing || existing.getA1Notation() !== range.getA1Notation() || existing.getSheet().getSheetId() !== sheet.getSheetId()) {
-      ss.setNamedRange(name, range);
-    }
-    return ss.getRangeByName(name);
-  }
-
   const namedRanges = {
-    json: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.json, 2, 2),
-    importStartDate: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.importStartDate, 3, 2),
-    calendarNames: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.calendarNames, 4, 2),
-    defaultCalendarName: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 5, 2),
-    validity: ensureNamedRange(CONFIG_SHEET_SPEC.ranges.validity, 6, 2),
+    json: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.json, 2, 2),
+    importStartDate: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.importStartDate, 3, 2),
+    calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 4, 2),
+    defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 5, 2),
+    validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 6, 2),
   };
 
   if (toText_(namedRanges.json.getValue()).trim() === '') {
@@ -256,9 +247,52 @@ function isOwnedConfigSheet_(ss, sheet) {
     (key) => CONFIG_SHEET_SPEC.ranges[key]
   );
   return namedRangeNames.every((name) => {
-    const range = ss.getRangeByName(name);
-    return range && range.getSheet().getSheetId() === sheet.getSheetId();
+    return !!findManagedNamedRange_(ss, sheet, name);
   });
+}
+
+function ensureManagedNamedRange_(ss, sheet, baseName, row, col) {
+  const desiredRange = sheet.getRange(row, col, 1, 1);
+  const candidateNames = [baseName, `${baseName}__GCAL2GSHEET`];
+
+  let suffix = 1;
+  while (candidateNames.length < 12) {
+    candidateNames.push(`${baseName}__GCAL2GSHEET_${suffix}`);
+    suffix += 1;
+  }
+
+  for (let i = 0; i < candidateNames.length; i += 1) {
+    const name = candidateNames[i];
+    const existing = ss.getRangeByName(name);
+    if (!existing || existing.getSheet().getSheetId() === sheet.getSheetId()) {
+      if (
+        !existing
+        || existing.getA1Notation() !== desiredRange.getA1Notation()
+        || existing.getSheet().getSheetId() !== sheet.getSheetId()
+      ) {
+        ss.setNamedRange(name, desiredRange);
+      }
+      return ss.getRangeByName(name);
+    }
+  }
+
+  throw new Error(`Unable to reserve managed named range for ${baseName}.`);
+}
+
+function findManagedNamedRange_(ss, sheet, baseName) {
+  const candidateNames = [baseName, `${baseName}__GCAL2GSHEET`];
+  for (let i = 1; i <= 10; i += 1) {
+    candidateNames.push(`${baseName}__GCAL2GSHEET_${i}`);
+  }
+
+  for (let i = 0; i < candidateNames.length; i += 1) {
+    const range = ss.getRangeByName(candidateNames[i]);
+    if (range && range.getSheet().getSheetId() === sheet.getSheetId()) {
+      return range;
+    }
+  }
+
+  return null;
 }
 
 function getConfigPropertiesStore_() {
