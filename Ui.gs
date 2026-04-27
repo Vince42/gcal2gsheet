@@ -10,8 +10,6 @@ function setProgress_(ss, message) {
 }
 
 function showConfigDialog_() {
-  refreshConfig_();
-
   const template = HtmlService.createTemplateFromFile('ConfigDialog');
   template.model = getConfigForDialog_();
   const html = template

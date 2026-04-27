@@ -1,11 +1,24 @@
 function onOpen() {
-  refreshConfig_();
+  let configError = null;
+  try {
+    refreshConfig_();
+  } catch (error) {
+    configError = error;
+  }
 
   SpreadsheetApp.getUi()
     .createMenu(CONFIG.menu.title)
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
     .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
     .addToUi();
+
+  if (configError) {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      `Configuration issue detected: ${configError.message}. Open "${CONFIG.menu.configItem}" to fix.`,
+      CONFIG.toastTitle,
+      10
+    );
+  }
 }
 
 function updateCalendarSheets() {
