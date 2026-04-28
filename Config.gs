@@ -59,9 +59,10 @@ const CONFIG_SHEET_SPEC = Object.freeze({
     calendarNames: 'CFG_CALENDAR_NAMES',
     defaultCalendarName: 'CFG_DEFAULT_CALENDAR_NAME',
     validity: 'CFG_VALIDITY',
+    debugLog: 'CFG_DEBUG_LOG',
   },
 });
-const CONFIG_DIALOG_REVISION = '2026-04-28-r2';
+const CONFIG_DIALOG_REVISION = '2026-04-28-r3';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -217,6 +218,7 @@ function ensureConfigSheetAndRanges_() {
     ['CalendarNames', ''],
     ['DefaultCalendarName', ''],
     ['Validity', ''],
+    ['DebugLog', ''],
   ];
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
@@ -259,6 +261,7 @@ function ensureConfigSheetAndRanges_() {
     calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 5, 2),
     defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 6, 2),
     validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 7, 2),
+    debugLog: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.debugLog, 8, 2),
   };
 
   if (toText_(namedRanges.json.getValue()).trim() === '') {
@@ -269,6 +272,7 @@ function ensureConfigSheetAndRanges_() {
     namedRanges.calendarNames.setValue(DEFAULT_CONFIG.calendarNames.join(', '));
     namedRanges.defaultCalendarName.setValue(DEFAULT_CONFIG.defaultCalendarName);
     namedRanges.validity.setValue('VALID');
+    namedRanges.debugLog.setValue('');
   }
 
   return { sheet, namedRanges };
@@ -326,6 +330,7 @@ function hasManagedConfigLayout_(sheet) {
     'CalendarNames',
     'DefaultCalendarName',
     'Validity',
+    'DebugLog',
   ];
   const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
   return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
@@ -635,7 +640,23 @@ function getNoopPropertiesStore_() {
 }
 
 function logStorageDebug_(phase, message) {
-  const line = `[storage-debug] ${phase}: ${message}`;
+  const line = `${new Date().toISOString()} [storage-debug] ${phase}: ${message}`;
   console.log(line);
   Logger.log(line);
+  appendStorageDebugToSheet_(line);
+}
+
+function appendStorageDebugToSheet_(line) {
+  try {
+    const refs = ensureConfigSheetAndRanges_();
+    const cell = refs.namedRanges.debugLog;
+    const existing = toText_(cell.getValue());
+    const lines = existing ? existing.split('\n') : [];
+    lines.push(line);
+    cell.setValue(lines.slice(-50).join('\n'));
+  } catch (error) {
+    const fallback = `[storage-debug] failed to persist debug line: ${error}`;
+    console.log(fallback);
+    Logger.log(fallback);
+  }
 }
