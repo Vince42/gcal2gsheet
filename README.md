@@ -397,3 +397,46 @@ Possible future extensions:
 - import of Google Calendar description field in addition to event title
 - configurable status cell
 - stricter validation of manual row edits
+
+---
+
+## Automated push to Apps Script (GitHub Actions)
+
+This repository includes a workflow to push source changes directly to Google Apps Script on every push to `main` (and manually via `workflow_dispatch`).
+
+Workflow file:
+
+- `.github/workflows/apps-script-push.yml`
+- `appsscript.json` (required by `clasp push`)
+
+Security model:
+
+- credentials are never committed to the repository
+- local credential files are ignored by `.gitignore` (`.clasp.json`, `.clasprc.json`)
+- CI receives credentials only via GitHub Secrets
+
+Required GitHub repository secrets:
+
+- `CLASPRC_JSON`  
+  The full JSON contents of a valid `~/.clasprc.json` for `clasp`.
+  Base64-encoded JSON is also accepted.
+
+Configured target Script ID:
+
+- `1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC`
+
+Optional safety recommendation:
+
+- protect the `main` branch so only reviewed merges trigger production pushes
+
+### Making CI publishing reliable (avoiding `PERMISSION_DENIED`)
+
+You cannot guarantee "always" in OAuth systems (tokens can be revoked/expired, account access can be removed), but you can make failures rare and recoverable:
+
+1. Use a dedicated deployment Google account (bot user), not a personal account.
+2. Make that account **Editor** (or Owner) on the target Apps Script project.
+3. Generate `~/.clasprc.json` while logged in as that deployment account and store it in the GitHub secret `CLASPRC_JSON`.
+4. If publishing fails with permission errors, rotate `CLASPRC_JSON` from the same deployment account and re-run the workflow.
+5. Keep the Apps Script API enabled for that Google Cloud project/account.
+
+This workflow now performs explicit auth/script-access checks before push and prints remediation guidance when permission errors are detected.

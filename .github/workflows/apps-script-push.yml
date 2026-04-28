@@ -1,0 +1,102 @@
+name: Push Apps Script
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+
+jobs:
+  push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      SCRIPT_ID: "1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Install clasp
+        run: npm install --global @google/clasp
+
+      - name: Write clasp auth config
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then
+            echo "Missing required secret: CLASPRC_JSON"
+            exit 1
+          fi
+          python - <<'PY'
+          import os
+          import json
+          import base64
+          import pathlib
+
+          raw = os.environ["CLASPRC_JSON"].strip()
+
+          def parse_json(candidate):
+            return json.loads(candidate)
+
+          payload = None
+          try:
+            parse_json(raw)
+            payload = raw
+          except Exception:
+            try:
+              decoded = base64.b64decode(raw).decode("utf-8")
+              parse_json(decoded)
+              payload = decoded
+            except Exception as exc:
+              raise SystemExit(f"CLASPRC_JSON is neither valid JSON nor base64-encoded JSON: {exc}")
+
+          home = pathlib.Path.home()
+          home.mkdir(parents=True, exist_ok=True)
+          target = home / ".clasprc.json"
+          target.write_text(payload, encoding="utf-8")
+          PY
+          chmod 600 "$HOME/.clasprc.json"
+
+      - name: Write clasp project config
+        run: |
+          cat > .clasp.json <<EOF
+          {
+            "scriptId": "${SCRIPT_ID}",
+            "rootDir": "."
+          }
+          EOF
+          chmod 600 .clasp.json
+
+      - name: Validate clasp auth can access target script
+        run: |
+          set -euo pipefail
+          clasp --version
+          if ! clasp list > /tmp/clasp_list.txt 2>&1; then
+            cat /tmp/clasp_list.txt
+            echo "Auth check failed. Recreate CLASPRC_JSON with the deployment account and ensure it has Apps Script access."
+            exit 1
+          fi
+          if ! clasp deployments > /tmp/clasp_deployments.txt 2>&1; then
+            cat /tmp/clasp_deployments.txt
+            echo "The authenticated account cannot access script $SCRIPT_ID."
+            echo "Share the Apps Script project with that account (Editor) and refresh CLASPRC_JSON."
+            exit 1
+          fi
+
+      - name: Push to Apps Script
+        run: |
+          set -euo pipefail
+          if ! clasp push --force > /tmp/clasp_push.txt 2>&1; then
+            cat /tmp/clasp_push.txt
+            if grep -E "PERMISSION_DENIED|403|insufficient" /tmp/clasp_push.txt > /dev/null; then
+              echo "Push failed due to permissions. Rotate CLASPRC_JSON using the deployment account and verify script sharing."
+            fi
+            exit 1
+          fi
