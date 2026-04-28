@@ -86,6 +86,10 @@ function loadSyncTokens_(calendars) {
       if (!isPermissionDeniedError_(error)) {
         throw error;
       }
+      logStorageDebug_(
+        'load-sync-tokens',
+        `Ignored denied read for calendarId "${calendarInfo.id}": ${error}`
+      );
     }
     return {
       calendarId: calendarInfo.id,
@@ -108,6 +112,7 @@ function saveSyncTokens_(tokensByCalendarId) {
     if (!isPermissionDeniedError_(error)) {
       throw error;
     }
+    logStorageDebug_('save-sync-tokens', `Ignored denied write while saving sync tokens: ${error}`);
   }
 }
 
@@ -121,6 +126,10 @@ function clearSyncTokens_(calendars) {
       if (!isPermissionDeniedError_(error)) {
         throw error;
       }
+      logStorageDebug_(
+        'clear-sync-tokens',
+        `Ignored denied delete for calendarId "${calendarInfo.id}": ${error}`
+      );
     }
   });
 }

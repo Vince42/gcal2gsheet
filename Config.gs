@@ -61,7 +61,7 @@ const CONFIG_SHEET_SPEC = Object.freeze({
     validity: 'CFG_VALIDITY',
   },
 });
-const CONFIG_DIALOG_REVISION = '2026-04-28-r1';
+const CONFIG_DIALOG_REVISION = '2026-04-28-r2';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -377,11 +377,16 @@ function findManagedNamedRange_(ss, sheet, baseName) {
 
 function getConfigPropertiesStore_() {
   try {
+    logStorageDebug_('properties-store', 'Using DocumentProperties');
     return PropertiesService.getDocumentProperties();
   } catch (documentError) {
+    logStorageDebug_('properties-store', `DocumentProperties unavailable: ${documentError}`);
     try {
+      logStorageDebug_('properties-store', 'Using ScriptProperties');
       return PropertiesService.getScriptProperties();
     } catch (scriptError) {
+      logStorageDebug_('properties-store', `ScriptProperties unavailable: ${scriptError}`);
+      logStorageDebug_('properties-store', 'Falling back to no-op properties store');
       return getNoopPropertiesStore_();
     }
   }
@@ -418,6 +423,7 @@ function clearSyncTokenProperties_(props, prefixes) {
     allProps = props.getProperties();
   } catch (error) {
     if (isPermissionDeniedError_(error)) {
+      logStorageDebug_('clear-sync-token-properties', `Ignored denied read while listing properties: ${error}`);
       return;
     }
     throw error;
@@ -432,6 +438,7 @@ function clearSyncTokenProperties_(props, prefixes) {
       if (!isPermissionDeniedError_(error)) {
         throw error;
       }
+      logStorageDebug_('clear-sync-token-properties', `Ignored denied delete for key "${key}": ${error}`);
     }
   });
 }
@@ -606,8 +613,10 @@ function isPermissionDeniedError_(error) {
   return (
     upperMessage.includes('PERMISSION_DENIED')
     || upperMessage.includes('ACCESS_DENIED')
-    || upperMessage.includes('READING FROM STORAGE')
-    || upperMessage.includes('STORAGE')
+    || (
+      upperMessage.includes('READING FROM STORAGE')
+      && upperMessage.includes('DENIED')
+    )
   );
 }
 
@@ -623,4 +632,10 @@ function getNoopPropertiesStore_() {
     setProperties() {},
     deleteProperty() {},
   };
+}
+
+function logStorageDebug_(phase, message) {
+  const line = `[storage-debug] ${phase}: ${message}`;
+  console.log(line);
+  Logger.log(line);
 }
