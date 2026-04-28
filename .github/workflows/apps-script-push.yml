@@ -83,8 +83,8 @@ jobs:
             echo "Auth check failed. Recreate CLASPRC_JSON with the deployment account and ensure it has Apps Script access."
             exit 1
           fi
-          if ! clasp open "$SCRIPT_ID" > /tmp/clasp_open.txt 2>&1; then
-            cat /tmp/clasp_open.txt
+          if ! clasp deployments > /tmp/clasp_deployments.txt 2>&1; then
+            cat /tmp/clasp_deployments.txt
             echo "The authenticated account cannot access script $SCRIPT_ID."
             echo "Share the Apps Script project with that account (Editor) and refresh CLASPRC_JSON."
             exit 1

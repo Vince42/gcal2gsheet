@@ -276,12 +276,12 @@ function ensureConfigSheetAndRanges_() {
 
 function resolveManagedConfigSheet_(ss) {
   const technicalSheet = ss.getSheetByName(CONFIG_SHEET_SPEC.technicalName);
-  if (technicalSheet && isOwnedConfigSheet_(ss, technicalSheet)) {
+  if (technicalSheet && isManagedConfigSheetCandidate_(ss, technicalSheet)) {
     return technicalSheet;
   }
 
   const legacySheet = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
-  if (legacySheet && isOwnedConfigSheet_(ss, legacySheet)) {
+  if (legacySheet && isManagedConfigSheetCandidate_(ss, legacySheet)) {
     return legacySheet;
   }
 
@@ -311,6 +311,24 @@ function isOwnedConfigSheet_(ss, sheet) {
   return namedRangeNames.every((name) => {
     return !!findManagedNamedRange_(ss, sheet, name);
   });
+}
+
+function isManagedConfigSheetCandidate_(ss, sheet) {
+  return isOwnedConfigSheet_(ss, sheet) || hasManagedConfigLayout_(sheet);
+}
+
+function hasManagedConfigLayout_(sheet) {
+  const expectedKeys = [
+    'Key',
+    'ConfigJson',
+    'LastValidConfigJson',
+    'ImportStartDate',
+    'CalendarNames',
+    'DefaultCalendarName',
+    'Validity',
+  ];
+  const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
+  return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
 }
 
 function ensureManagedNamedRange_(ss, sheet, baseName, row, col) {
