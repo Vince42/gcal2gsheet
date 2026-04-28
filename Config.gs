@@ -378,18 +378,12 @@ function findManagedNamedRange_(ss, sheet, baseName) {
 function getConfigPropertiesStore_() {
   try {
     return PropertiesService.getDocumentProperties();
-  } catch (error) {
-    if (isPermissionDeniedError_(error)) {
-      try {
-        return PropertiesService.getScriptProperties();
-      } catch (scriptError) {
-        if (isPermissionDeniedError_(scriptError)) {
-          return getNoopPropertiesStore_();
-        }
-        throw scriptError;
-      }
+  } catch (documentError) {
+    try {
+      return PropertiesService.getScriptProperties();
+    } catch (scriptError) {
+      return getNoopPropertiesStore_();
     }
-    throw error;
   }
 }
 
