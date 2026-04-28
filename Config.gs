@@ -59,9 +59,10 @@ const CONFIG_SHEET_SPEC = Object.freeze({
     calendarNames: 'CFG_CALENDAR_NAMES',
     defaultCalendarName: 'CFG_DEFAULT_CALENDAR_NAME',
     validity: 'CFG_VALIDITY',
+    debugLog: 'CFG_DEBUG_LOG',
   },
 });
-const CONFIG_DIALOG_REVISION = '2026-04-28-r1';
+const CONFIG_DIALOG_REVISION = '2026-04-28-r3';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -217,6 +218,7 @@ function ensureConfigSheetAndRanges_() {
     ['CalendarNames', ''],
     ['DefaultCalendarName', ''],
     ['Validity', ''],
+    ['DebugLog', ''],
   ];
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
@@ -259,6 +261,7 @@ function ensureConfigSheetAndRanges_() {
     calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 5, 2),
     defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 6, 2),
     validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 7, 2),
+    debugLog: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.debugLog, 8, 2),
   };
 
   if (toText_(namedRanges.json.getValue()).trim() === '') {
@@ -269,6 +272,7 @@ function ensureConfigSheetAndRanges_() {
     namedRanges.calendarNames.setValue(DEFAULT_CONFIG.calendarNames.join(', '));
     namedRanges.defaultCalendarName.setValue(DEFAULT_CONFIG.defaultCalendarName);
     namedRanges.validity.setValue('VALID');
+    namedRanges.debugLog.setValue('');
   }
 
   return { sheet, namedRanges };
@@ -326,6 +330,7 @@ function hasManagedConfigLayout_(sheet) {
     'CalendarNames',
     'DefaultCalendarName',
     'Validity',
+    'DebugLog',
   ];
   const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
   return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
@@ -377,11 +382,16 @@ function findManagedNamedRange_(ss, sheet, baseName) {
 
 function getConfigPropertiesStore_() {
   try {
+    logStorageDebug_('properties-store', 'Using DocumentProperties');
     return PropertiesService.getDocumentProperties();
   } catch (documentError) {
+    logStorageDebug_('properties-store', `DocumentProperties unavailable: ${documentError}`);
     try {
+      logStorageDebug_('properties-store', 'Using ScriptProperties');
       return PropertiesService.getScriptProperties();
     } catch (scriptError) {
+      logStorageDebug_('properties-store', `ScriptProperties unavailable: ${scriptError}`);
+      logStorageDebug_('properties-store', 'Falling back to no-op properties store');
       return getNoopPropertiesStore_();
     }
   }
@@ -418,6 +428,7 @@ function clearSyncTokenProperties_(props, prefixes) {
     allProps = props.getProperties();
   } catch (error) {
     if (isPermissionDeniedError_(error)) {
+      logStorageDebug_('clear-sync-token-properties', `Ignored denied read while listing properties: ${error}`);
       return;
     }
     throw error;
@@ -432,6 +443,7 @@ function clearSyncTokenProperties_(props, prefixes) {
       if (!isPermissionDeniedError_(error)) {
         throw error;
       }
+      logStorageDebug_('clear-sync-token-properties', `Ignored denied delete for key "${key}": ${error}`);
     }
   });
 }
@@ -602,7 +614,15 @@ function normalizeDateCellToIsoOrText_(value, timeZone) {
 
 function isPermissionDeniedError_(error) {
   const message = error && error.message ? String(error.message) : String(error);
-  return message.toUpperCase().includes('PERMISSION_DENIED');
+  const upperMessage = message.toUpperCase();
+  return (
+    upperMessage.includes('PERMISSION_DENIED')
+    || upperMessage.includes('ACCESS_DENIED')
+    || (
+      upperMessage.includes('READING FROM STORAGE')
+      && upperMessage.includes('DENIED')
+    )
+  );
 }
 
 function getNoopPropertiesStore_() {
@@ -617,4 +637,26 @@ function getNoopPropertiesStore_() {
     setProperties() {},
     deleteProperty() {},
   };
+}
+
+function logStorageDebug_(phase, message) {
+  const line = `${new Date().toISOString()} [storage-debug] ${phase}: ${message}`;
+  console.log(line);
+  Logger.log(line);
+  appendStorageDebugToSheet_(line);
+}
+
+function appendStorageDebugToSheet_(line) {
+  try {
+    const refs = ensureConfigSheetAndRanges_();
+    const cell = refs.namedRanges.debugLog;
+    const existing = toText_(cell.getValue());
+    const lines = existing ? existing.split('\n') : [];
+    lines.push(line);
+    cell.setValue(lines.slice(-50).join('\n'));
+  } catch (error) {
+    const fallback = `[storage-debug] failed to persist debug line: ${error}`;
+    console.log(fallback);
+    Logger.log(fallback);
+  }
 }

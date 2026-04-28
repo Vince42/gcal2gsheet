@@ -26,15 +26,25 @@ function showConfigDialog_() {
 }
 
 function saveConfigDialog_(payload) {
-  const result = saveConfigFromDialog_(payload);
-  refreshConfig_();
-  return result;
+  try {
+    const result = saveConfigFromDialog_(payload);
+    refreshConfig_();
+    return result;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    throw new Error(`saveConfigDialog_ failed after revision ${CONFIG_DIALOG_REVISION}: ${message}`);
+  }
 }
 
 function resetConfigDialog_() {
-  const result = resetConfigToDefault_();
-  refreshConfig_();
-  return result;
+  try {
+    const result = resetConfigToDefault_();
+    refreshConfig_();
+    return result;
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    throw new Error(`resetConfigDialog_ failed after revision ${CONFIG_DIALOG_REVISION}: ${message}`);
+  }
 }
 
 function saveConfigDialog(payload) {
