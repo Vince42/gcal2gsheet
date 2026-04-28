@@ -79,9 +79,17 @@ function loadSyncTokens_(calendars) {
   const props = getConfigPropertiesStore_();
 
   return calendars.map((calendarInfo) => {
+    let syncToken = '';
+    try {
+      syncToken = props.getProperty(CONFIG.propertyPrefix + calendarInfo.id) || '';
+    } catch (error) {
+      if (!isPermissionDeniedError_(error)) {
+        throw error;
+      }
+    }
     return {
       calendarId: calendarInfo.id,
-      syncToken: props.getProperty(CONFIG.propertyPrefix + calendarInfo.id) || '',
+      syncToken,
     };
   });
 }
@@ -94,13 +102,25 @@ function saveSyncTokens_(tokensByCalendarId) {
     payload[CONFIG.propertyPrefix + calendarId] = tokensByCalendarId[calendarId] || '';
   });
 
-  props.setProperties(payload, false);
+  try {
+    props.setProperties(payload, false);
+  } catch (error) {
+    if (!isPermissionDeniedError_(error)) {
+      throw error;
+    }
+  }
 }
 
 function clearSyncTokens_(calendars) {
   const props = getConfigPropertiesStore_();
 
   calendars.forEach((calendarInfo) => {
-    props.deleteProperty(CONFIG.propertyPrefix + calendarInfo.id);
+    try {
+      props.deleteProperty(CONFIG.propertyPrefix + calendarInfo.id);
+    } catch (error) {
+      if (!isPermissionDeniedError_(error)) {
+        throw error;
+      }
+    }
   });
 }

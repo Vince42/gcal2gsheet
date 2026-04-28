@@ -129,6 +129,7 @@
       <button type="button" class="primary" onclick="save()">Save</button>
     </div>
 
+    <div id="revision" class="hint"></div>
     <div id="status" class="status"></div>
 
     <script>
@@ -170,6 +171,7 @@
       }
 
       function initialize() {
+        document.getElementById('revision').textContent = `Revision: ${model && model.revision ? model.revision : 'unknown'}`;
         const config = model && model.config ? model.config : model && model.defaults ? model.defaults : {};
         currentConfig = clone(config);
         syncEditorFromCurrentConfig();

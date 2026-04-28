@@ -11,6 +11,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      SCRIPT_ID: "1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC"
 
     steps:
       - name: Checkout
@@ -66,14 +68,35 @@ jobs:
         run: |
           cat > .clasp.json <<EOF
           {
-            "scriptId": "1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC",
+            "scriptId": "${SCRIPT_ID}",
             "rootDir": "."
           }
           EOF
           chmod 600 .clasp.json
 
+      - name: Validate clasp auth can access target script
+        run: |
+          set -euo pipefail
+          clasp --version
+          if ! clasp list > /tmp/clasp_list.txt 2>&1; then
+            cat /tmp/clasp_list.txt
+            echo "Auth check failed. Recreate CLASPRC_JSON with the deployment account and ensure it has Apps Script access."
+            exit 1
+          fi
+          if ! clasp open "$SCRIPT_ID" > /tmp/clasp_open.txt 2>&1; then
+            cat /tmp/clasp_open.txt
+            echo "The authenticated account cannot access script $SCRIPT_ID."
+            echo "Share the Apps Script project with that account (Editor) and refresh CLASPRC_JSON."
+            exit 1
+          fi
+
       - name: Push to Apps Script
         run: |
-          clasp --version
-          clasp list > /dev/null
-          clasp push --force
+          set -euo pipefail
+          if ! clasp push --force > /tmp/clasp_push.txt 2>&1; then
+            cat /tmp/clasp_push.txt
+            if grep -E "PERMISSION_DENIED|403|insufficient" /tmp/clasp_push.txt > /dev/null; then
+              echo "Push failed due to permissions. Rotate CLASPRC_JSON using the deployment account and verify script sharing."
+            fi
+            exit 1
+          fi

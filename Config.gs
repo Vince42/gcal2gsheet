@@ -61,6 +61,7 @@ const CONFIG_SHEET_SPEC = Object.freeze({
     validity: 'CFG_VALIDITY',
   },
 });
+const CONFIG_DIALOG_REVISION = '2026-04-28-r1';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -80,6 +81,7 @@ function getConfigForDialog_() {
   return {
     config: cloneConfig_(state.config),
     defaults: cloneConfig_(DEFAULT_CONFIG),
+    revision: CONFIG_DIALOG_REVISION,
     validation: {
       isValid: state.isValid,
       message: state.message,
@@ -100,8 +102,8 @@ function saveConfigFromDialog_(payload) {
     || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
   writeConfigToSheet_(basicConfig);
 
-  const props = getConfigPropertiesStore_();
   if (scopeChanged) {
+    const props = getConfigPropertiesStore_();
     clearSyncTokenProperties_(props, [
       DEFAULT_CONFIG.propertyPrefix,
       previousConfig.propertyPrefix,
@@ -116,8 +118,10 @@ function saveConfigFromDialog_(payload) {
 function resetConfigToDefault_() {
   writeConfigToSheet_(cloneConfig_(DEFAULT_CONFIG));
 
-  const props = getConfigPropertiesStore_();
-  clearSyncTokenProperties_(props, [DEFAULT_CONFIG.propertyPrefix, CONFIG.propertyPrefix]);
+  clearSyncTokenProperties_(getConfigPropertiesStore_(), [
+    DEFAULT_CONFIG.propertyPrefix,
+    CONFIG.propertyPrefix,
+  ]);
 
   CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
   return { success: true };
@@ -397,10 +401,25 @@ function clearSyncTokenProperties_(props, prefixes) {
     return;
   }
 
-  const allProps = props.getProperties();
+  let allProps;
+  try {
+    allProps = props.getProperties();
+  } catch (error) {
+    if (isPermissionDeniedError_(error)) {
+      return;
+    }
+    throw error;
+  }
   Object.keys(allProps).forEach((key) => {
-    if (uniquePrefixes.some((prefix) => key.startsWith(prefix))) {
+    if (!uniquePrefixes.some((prefix) => key.startsWith(prefix))) {
+      return;
+    }
+    try {
       props.deleteProperty(key);
+    } catch (error) {
+      if (!isPermissionDeniedError_(error)) {
+        throw error;
+      }
     }
   });
 }

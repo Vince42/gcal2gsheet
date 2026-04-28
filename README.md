@@ -428,3 +428,15 @@ Configured target Script ID:
 Optional safety recommendation:
 
 - protect the `main` branch so only reviewed merges trigger production pushes
+
+### Making CI publishing reliable (avoiding `PERMISSION_DENIED`)
+
+You cannot guarantee "always" in OAuth systems (tokens can be revoked/expired, account access can be removed), but you can make failures rare and recoverable:
+
+1. Use a dedicated deployment Google account (bot user), not a personal account.
+2. Make that account **Editor** (or Owner) on the target Apps Script project.
+3. Generate `~/.clasprc.json` while logged in as that deployment account and store it in the GitHub secret `CLASPRC_JSON`.
+4. If publishing fails with permission errors, rotate `CLASPRC_JSON` from the same deployment account and re-run the workflow.
+5. Keep the Apps Script API enabled for that Google Cloud project/account.
+
+This workflow now performs explicit auth/script-access checks before push and prints remediation guidance when permission errors are detected.
