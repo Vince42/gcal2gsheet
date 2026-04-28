@@ -54,6 +54,7 @@ const CONFIG_SHEET_SPEC = Object.freeze({
   technicalName: '_gcal2gsheet_config',
   ranges: {
     json: 'CFG_JSON',
+    lastValidJson: 'CFG_LAST_VALID_JSON',
     importStartDate: 'CFG_IMPORT_START_DATE',
     calendarNames: 'CFG_CALENDAR_NAMES',
     defaultCalendarName: 'CFG_DEFAULT_CALENDAR_NAME',
@@ -125,6 +126,7 @@ function resetConfigToDefault_() {
 function readConfigStateFromSheet_() {
   const refs = ensureConfigSheetAndRanges_();
   const jsonRaw = toText_(refs.namedRanges.json.getValue()).trim();
+  const lastValidJsonRaw = toText_(refs.namedRanges.lastValidJson.getValue()).trim();
   const importStartDateOverride = normalizeDateCellToIsoOrText_(
     refs.namedRanges.importStartDate.getValue(),
     SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()
@@ -137,8 +139,15 @@ function readConfigStateFromSheet_() {
   try {
     parsedConfig = jsonRaw ? JSON.parse(jsonRaw) : cloneConfig_(DEFAULT_CONFIG);
   } catch (error) {
-    parsedConfig = cloneConfig_(DEFAULT_CONFIG);
-    validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}`;
+    try {
+      parsedConfig = lastValidJsonRaw
+        ? JSON.parse(lastValidJsonRaw)
+        : cloneConfig_(DEFAULT_CONFIG);
+      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}. Restored the last valid configuration snapshot; fix ${CONFIG_SHEET_SPEC.ranges.json} and save.`;
+    } catch (fallbackError) {
+      parsedConfig = cloneConfig_(DEFAULT_CONFIG);
+      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}. No valid snapshot available; defaults loaded.`;
+    }
   }
 
   if (importStartDateOverride) {
@@ -176,7 +185,9 @@ function readConfigStateFromSheet_() {
 
 function writeConfigToSheet_(config) {
   const refs = ensureConfigSheetAndRanges_();
-  refs.namedRanges.json.setValue(JSON.stringify(config, null, 2));
+  const jsonPayload = JSON.stringify(config, null, 2);
+  refs.namedRanges.json.setValue(jsonPayload);
+  refs.namedRanges.lastValidJson.setValue(jsonPayload);
   refs.namedRanges.importStartDate.setValue(config.importStartDate || '');
   refs.namedRanges.calendarNames.setValue((config.calendarNames || []).join(', '));
   refs.namedRanges.defaultCalendarName.setValue(config.defaultCalendarName || '');
@@ -197,6 +208,7 @@ function ensureConfigSheetAndRanges_() {
   const layout = [
     ['Key', 'Value'],
     ['ConfigJson', ''],
+    ['LastValidConfigJson', ''],
     ['ImportStartDate', ''],
     ['CalendarNames', ''],
     ['DefaultCalendarName', ''],
@@ -204,6 +216,33 @@ function ensureConfigSheetAndRanges_() {
   ];
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
+  const legacyLayoutKeys = [
+    'Key',
+    'ConfigJson',
+    'ImportStartDate',
+    'CalendarNames',
+    'DefaultCalendarName',
+    'Validity',
+  ];
+  const currentKeys = current.map((row) => toText_(row[0]));
+  const isLegacyLayout = legacyLayoutKeys.every((key, i) => currentKeys[i] === key);
+  if (isLegacyLayout) {
+    const legacyValues = sheet.getRange(2, 2, legacyLayoutKeys.length - 1, 1).getValues();
+    const jsonValue = legacyValues[0][0];
+    const importStartDateValue = legacyValues[1][0];
+    const calendarNamesValue = legacyValues[2][0];
+    const defaultCalendarNameValue = legacyValues[3][0];
+    const validityValue = legacyValues[4][0];
+    sheet.getRange(2, 2, 6, 1).setValues([
+      [jsonValue],
+      [jsonValue],
+      [importStartDateValue],
+      [calendarNamesValue],
+      [defaultCalendarNameValue],
+      [validityValue],
+    ]);
+  }
+
   const keysNeedWrite = layout.some((row, i) => current[i][0] !== row[0]);
   if (keysNeedWrite) {
     sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
@@ -211,14 +250,17 @@ function ensureConfigSheetAndRanges_() {
 
   const namedRanges = {
     json: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.json, 2, 2),
-    importStartDate: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.importStartDate, 3, 2),
-    calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 4, 2),
-    defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 5, 2),
-    validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 6, 2),
+    lastValidJson: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.lastValidJson, 3, 2),
+    importStartDate: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.importStartDate, 4, 2),
+    calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 5, 2),
+    defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 6, 2),
+    validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 7, 2),
   };
 
   if (toText_(namedRanges.json.getValue()).trim() === '') {
-    namedRanges.json.setValue(JSON.stringify(DEFAULT_CONFIG, null, 2));
+    const defaultJson = JSON.stringify(DEFAULT_CONFIG, null, 2);
+    namedRanges.json.setValue(defaultJson);
+    namedRanges.lastValidJson.setValue(defaultJson);
     namedRanges.importStartDate.setValue(DEFAULT_CONFIG.importStartDate);
     namedRanges.calendarNames.setValue(DEFAULT_CONFIG.calendarNames.join(', '));
     namedRanges.defaultCalendarName.setValue(DEFAULT_CONFIG.defaultCalendarName);
@@ -230,7 +272,7 @@ function ensureConfigSheetAndRanges_() {
 
 function resolveManagedConfigSheet_(ss) {
   const technicalSheet = ss.getSheetByName(CONFIG_SHEET_SPEC.technicalName);
-  if (technicalSheet) {
+  if (technicalSheet && isOwnedConfigSheet_(ss, technicalSheet)) {
     return technicalSheet;
   }
 
@@ -239,7 +281,23 @@ function resolveManagedConfigSheet_(ss) {
     return legacySheet;
   }
 
-  return ss.insertSheet(CONFIG_SHEET_SPEC.technicalName);
+  return insertManagedConfigSheet_(ss);
+}
+
+function insertManagedConfigSheet_(ss) {
+  const baseName = CONFIG_SHEET_SPEC.technicalName;
+  if (!ss.getSheetByName(baseName)) {
+    return ss.insertSheet(baseName);
+  }
+
+  for (let i = 1; i <= 99; i += 1) {
+    const candidate = `${baseName}_${i}`;
+    if (!ss.getSheetByName(candidate)) {
+      return ss.insertSheet(candidate);
+    }
+  }
+
+  throw new Error(`Unable to create managed config sheet for base name ${baseName}.`);
 }
 
 function isOwnedConfigSheet_(ss, sheet) {
