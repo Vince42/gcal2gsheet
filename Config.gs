@@ -602,7 +602,13 @@ function normalizeDateCellToIsoOrText_(value, timeZone) {
 
 function isPermissionDeniedError_(error) {
   const message = error && error.message ? String(error.message) : String(error);
-  return message.toUpperCase().includes('PERMISSION_DENIED');
+  const upperMessage = message.toUpperCase();
+  return (
+    upperMessage.includes('PERMISSION_DENIED')
+    || upperMessage.includes('ACCESS_DENIED')
+    || upperMessage.includes('READING FROM STORAGE')
+    || upperMessage.includes('STORAGE')
+  );
 }
 
 function getNoopPropertiesStore_() {
