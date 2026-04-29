@@ -62,7 +62,7 @@ const CONFIG_SHEET_SPEC = Object.freeze({
     debugLog: 'CFG_DEBUG_LOG',
   },
 });
-const CONFIG_DIALOG_REVISION = '2026-04-28-r3';
+const CONFIG_DIALOG_REVISION = '2026-04-29-r4';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -291,6 +291,22 @@ function resolveManagedConfigSheet_(ss) {
   const legacySheet = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
   if (legacySheet && isManagedConfigSheetCandidate_(ss, legacySheet)) {
     return legacySheet;
+  }
+
+  const prefixCandidates = ss
+    .getSheets()
+    .filter((sheet) => {
+      const name = sheet.getName();
+      return (
+        name === CONFIG_SHEET_SPEC.technicalName
+        || name.indexOf(`${CONFIG_SHEET_SPEC.technicalName}_`) === 0
+        || name === CONFIG_SHEET_SPEC.legacyName
+      );
+    });
+  for (let i = 0; i < prefixCandidates.length; i += 1) {
+    if (isManagedConfigSheetCandidate_(ss, prefixCandidates[i])) {
+      return prefixCandidates[i];
+    }
   }
 
   return insertManagedConfigSheet_(ss);
@@ -664,11 +680,31 @@ function logStorageDebug_(phase, message) {
 function appendStorageDebugToSheet_(line) {
   try {
     const refs = ensureConfigSheetAndRanges_();
+    const sheet = refs.sheet;
     const cell = refs.namedRanges.debugLog;
-    const existing = toText_(cell.getValue());
-    const lines = existing ? existing.split('\n') : [];
-    lines.push(line);
-    cell.setValue(lines.slice(-50).join('\n'));
+    const existing = toText_(cell.getValue()).trim();
+    const nextCount = existing === '' ? 1 : Number(existing) + 1;
+    cell.setValue(String(nextCount));
+
+    const startRow = 10;
+    const maxLines = 200;
+    const headerRange = sheet.getRange(startRow - 1, 1, 1, 2);
+    if (
+      toText_(headerRange.getCell(1, 1).getValue()) !== 'DebugTimestamp'
+      || toText_(headerRange.getCell(1, 2).getValue()) !== 'DebugMessage'
+    ) {
+      headerRange.setValues([['DebugTimestamp', 'DebugMessage']]);
+    }
+
+    const timestamp = new Date();
+    let nextRow = Math.max(sheet.getLastRow() + 1, startRow);
+    if (nextRow >= startRow + maxLines) {
+      sheet
+        .getRange(startRow + 1, 1, maxLines - 1, 2)
+        .moveTo(sheet.getRange(startRow, 1, maxLines - 1, 2));
+      nextRow = startRow + maxLines - 1;
+    }
+    sheet.getRange(nextRow, 1, 1, 2).setValues([[timestamp, line]]);
   } catch (error) {
     const fallback = `[storage-debug] failed to persist debug line: ${error}`;
     console.log(fallback);
