@@ -1,8 +1,9 @@
 function onOpen() {
   let configError = null;
+  let namedRangeCleanup = null;
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    removeInvalidManagedNamedRanges_(ss);
+    namedRangeCleanup = removeInvalidNamedRanges_(ss);
     refreshConfig_();
   } catch (error) {
     configError = error;
@@ -13,6 +14,14 @@ function onOpen() {
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
     .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
     .addToUi();
+
+  if (namedRangeCleanup && namedRangeCleanup.removedCount > 0) {
+    SpreadsheetApp.getUi().alert(
+      'Named range cleanup',
+      `Removed ${namedRangeCleanup.removedCount} invalid named range(s).`,
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+  }
 
   if (configError) {
     SpreadsheetApp.getActiveSpreadsheet().toast(

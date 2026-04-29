@@ -252,7 +252,7 @@ function ensureConfigSheetAndRanges_() {
   if (!ss) {
     throw new Error('No active spreadsheet available.');
   }
-  removeInvalidManagedNamedRanges_(ss);
+  removeInvalidNamedRanges_(ss);
 
   let sheet = resolveManagedConfigSheet_(ss);
   if (!sheet.isSheetHidden()) {
@@ -457,36 +457,32 @@ function findManagedNamedRange_(ss, sheet, baseName) {
   return null;
 }
 
-function removeInvalidManagedNamedRanges_(ss) {
-  const managedPrefixes = [
-    ...Object.keys(CONFIG_SHEET_SPEC.ranges).map((key) => CONFIG_SHEET_SPEC.ranges[key]),
-  ];
+function removeInvalidNamedRanges_(ss) {
   const namedRanges = ss.getNamedRanges();
+  const removed = [];
 
   namedRanges.forEach((namedRange) => {
     const name = namedRange.getName();
-    const isManaged = managedPrefixes.some((baseName) => {
-      return (
-        name === baseName
-        || name === `${baseName}__GCAL2GSHEET`
-        || name.indexOf(`${baseName}__GCAL2GSHEET_`) === 0
-      );
-    });
-    if (!isManaged) {
-      return;
-    }
 
     try {
       const range = namedRange.getRange();
       if (!range || !range.getSheet()) {
         namedRange.remove();
-        logStorageDebug_('named-range.cleanup', `Removed invalid managed named range "${name}".`);
+        const line = `Removed invalid named range "${name}" (missing range/sheet).`;
+        logStorageDebug_('named-range.cleanup', line);
+        removed.push(name);
       }
     } catch (error) {
       namedRange.remove();
-      logStorageDebug_('named-range.cleanup', `Removed broken managed named range "${name}": ${error}`);
+      const line = `Removed invalid named range "${name}" due to error: ${error}`;
+      logStorageDebug_('named-range.cleanup', line);
+      removed.push(name);
     }
   });
+  return {
+    removedCount: removed.length,
+    removedNames: removed,
+  };
 }
 
 
