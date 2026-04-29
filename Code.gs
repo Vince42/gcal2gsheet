@@ -1,9 +1,20 @@
 function onOpen() {
   let configError = null;
+  let namedRangeCleanup = null;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  logStorageDebug_('onOpen.start', new Date().toISOString());
   try {
+    namedRangeCleanup = removeInvalidNamedRanges_(ss);
+    logStorageDebug_(
+      'named-range.cleanup.summary',
+      `Cleanup removed ${namedRangeCleanup.removedCount} invalid named range(s).`
+    );
     refreshConfig_();
   } catch (error) {
     configError = error;
+    logStorageDebug_('named-range.cleanup.error', String(error));
+  } finally {
+    logStorageDebug_('onOpen.finish', new Date().toISOString());
   }
 
   SpreadsheetApp.getUi()
@@ -12,8 +23,16 @@ function onOpen() {
     .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
     .addToUi();
 
+  if (namedRangeCleanup && namedRangeCleanup.removedCount > 0) {
+    ss.toast(
+      `Named-range cleanup removed ${namedRangeCleanup.removedCount} invalid managed range(s).`,
+      CONFIG.toastTitle,
+      6
+    );
+  }
+
   if (configError) {
-    SpreadsheetApp.getActiveSpreadsheet().toast(
+    ss.toast(
       `Configuration issue detected: ${configError.message}. Open "${CONFIG.menu.configItem}" to fix.`,
       CONFIG.toastTitle,
       10
