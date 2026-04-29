@@ -43,7 +43,6 @@ const DEFAULT_CONFIG = Object.freeze({
   menu: {
     title: 'Calendar Import',
     item: 'Update calendar sheet',
-    configItem: 'Configuration...',
   },
 
   toastTitle: 'Calendar import',
@@ -51,18 +50,17 @@ const DEFAULT_CONFIG = Object.freeze({
 
 const CONFIG_SHEET_SPEC = Object.freeze({
   legacyName: 'Config',
-  technicalName: '_gcal2gsheet_config',
-  ranges: {
-    json: 'CFG_JSON',
-    lastValidJson: 'CFG_LAST_VALID_JSON',
-    importStartDate: 'CFG_IMPORT_START_DATE',
-    calendarNames: 'CFG_CALENDAR_NAMES',
-    defaultCalendarName: 'CFG_DEFAULT_CALENDAR_NAME',
-    validity: 'CFG_VALIDITY',
-    debugLog: 'CFG_DEBUG_LOG',
+  keyHeader: 'Key',
+  valueHeader: 'Value',
+  keys: {
+    json: 'ConfigJson',
+    lastValidJson: 'LastValidConfigJson',
+    importStartDate: 'ImportStartDate',
+    calendarNames: 'CalendarNames',
+    defaultCalendarName: 'DefaultCalendarName',
+    validity: 'Validity',
   },
 });
-const CONFIG_DIALOG_REVISION = '2026-04-29-r4';
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
 
@@ -76,82 +74,19 @@ function refreshConfig_() {
   return CONFIG;
 }
 
-function getConfigForDialog_() {
-  const state = readConfigStateFromSheet_();
 
-  return {
-    config: cloneConfig_(state.config),
-    defaults: cloneConfig_(DEFAULT_CONFIG),
-    revision: CONFIG_DIALOG_REVISION,
-    validation: {
-      isValid: state.isValid,
-      message: state.message,
-    },
-  };
-}
 
-function saveConfigFromDialog_(payload) {
-  const saveId = `cfg-save-${new Date().toISOString()}`;
-  assertConfigDebugWritable_();
-  logStorageDebug_('save-config', `${saveId} begin`);
-  logStorageDebug_('save-config.step', '1) validate payload presence');
-
-  if (!payload) {
-    throw new Error('Missing configuration payload.');
-  }
-
-  logStorageDebug_('save-config.step', '2) merge payload with defaults');
-  const basicConfig = withConfigSaveDebug_('save-config.merge', () => mergeConfigWithDefaults_(payload.config || {}));
-  logStorageDebug_('save-config.step', '3) validate merged config');
-  withConfigSaveDebug_('save-config.validate', () => validateConfig_(basicConfig));
-  logStorageDebug_('save-config.step', '4) read persisted config state');
-  const persistedState = withConfigSaveDebug_('save-config.read-state', () => readConfigStateFromSheet_());
-  logStorageDebug_('save-config.step', '5) compute scope-change decision');
-  const previousConfig = cloneConfig_(persistedState.config);
-  const scopeChanged = !persistedState.isValid
-    || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
-  logStorageDebug_('save-config.step', '6) write config values to config sheet');
-  const writeDetails = withConfigSaveDebug_('save-config.write-sheet', () => writeConfigToSheet_(basicConfig));
-
-  if (scopeChanged) {
-    logStorageDebug_('save-config.step', '7) scope changed: open properties store');
-    const props = getConfigPropertiesStore_();
-    logStorageDebug_('save-config.step', '8) clear sync-token properties');
-    withConfigSaveDebug_('save-config.clear-sync', () => clearSyncTokenProperties_(props, [
-      DEFAULT_CONFIG.propertyPrefix,
-      previousConfig.propertyPrefix,
-      basicConfig.propertyPrefix,
-    ]));
-  }
-
-  logStorageDebug_('save-config.step', '9) refresh in-memory CONFIG snapshot');
-  CONFIG = freezeConfigCopy_(basicConfig);
-  logStorageDebug_('save-config', `${saveId} done`);
-  return { success: true, saveId, writeDetails };
-}
-
-function resetConfigToDefault_() {
-  writeConfigToSheet_(cloneConfig_(DEFAULT_CONFIG));
-
-  clearSyncTokenProperties_(getConfigPropertiesStore_(), [
-    DEFAULT_CONFIG.propertyPrefix,
-    CONFIG.propertyPrefix,
-  ]);
-
-  CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
-  return { success: true };
-}
 
 function readConfigStateFromSheet_() {
   const refs = ensureConfigSheetAndRanges_();
-  const jsonRaw = toText_(refs.namedRanges.json.getValue()).trim();
-  const lastValidJsonRaw = toText_(refs.namedRanges.lastValidJson.getValue()).trim();
+  const jsonRaw = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.json]).trim();
+  const lastValidJsonRaw = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.lastValidJson]).trim();
   const importStartDateOverride = normalizeDateCellToIsoOrText_(
-    refs.namedRanges.importStartDate.getValue(),
+    refs.valuesByKey[CONFIG_SHEET_SPEC.keys.importStartDate],
     SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()
   );
-  const calendarNamesOverride = toText_(refs.namedRanges.calendarNames.getValue()).trim();
-  const defaultCalendarNameOverride = toText_(refs.namedRanges.defaultCalendarName.getValue()).trim();
+  const calendarNamesOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.calendarNames]).trim();
+  const defaultCalendarNameOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName]).trim();
 
   let parsedConfig;
   let validationMessage;
@@ -162,10 +97,10 @@ function readConfigStateFromSheet_() {
       parsedConfig = lastValidJsonRaw
         ? JSON.parse(lastValidJsonRaw)
         : cloneConfig_(DEFAULT_CONFIG);
-      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}. Restored the last valid configuration snapshot; fix ${CONFIG_SHEET_SPEC.ranges.json} and save.`;
+      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}. Restored the last valid configuration snapshot; fix ${CONFIG_SHEET_SPEC.keys.json} and save.`;
     } catch (fallbackError) {
       parsedConfig = cloneConfig_(DEFAULT_CONFIG);
-      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.ranges.json}: ${error.message}. No valid snapshot available; defaults loaded.`;
+      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}. No valid snapshot available; defaults loaded.`;
     }
   }
 
@@ -193,7 +128,7 @@ function readConfigStateFromSheet_() {
   }
 
   const isValid = validationMessage === 'VALID';
-  refs.namedRanges.validity.setValue(validationMessage);
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue(validationMessage);
 
   return {
     isValid,
@@ -209,68 +144,59 @@ function writeConfigToSheet_(config) {
     {
       key: 'json',
       value: jsonPayload,
-      sourceRange: refs.namedRanges.json.getA1Notation(),
-      targetRange: refs.namedRanges.json.getA1Notation(),
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.json].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.json].getA1Notation(),
     },
     {
       key: 'lastValidJson',
       value: jsonPayload,
-      sourceRange: refs.namedRanges.lastValidJson.getA1Notation(),
-      targetRange: refs.namedRanges.lastValidJson.getA1Notation(),
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].getA1Notation(),
     },
     {
       key: 'importStartDate',
       value: config.importStartDate || '',
-      sourceRange: refs.namedRanges.importStartDate.getA1Notation(),
-      targetRange: refs.namedRanges.importStartDate.getA1Notation(),
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].getA1Notation(),
     },
     {
       key: 'calendarNames',
       value: (config.calendarNames || []).join(', '),
-      sourceRange: refs.namedRanges.calendarNames.getA1Notation(),
-      targetRange: refs.namedRanges.calendarNames.getA1Notation(),
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].getA1Notation(),
     },
     {
       key: 'defaultCalendarName',
       value: config.defaultCalendarName || '',
-      sourceRange: refs.namedRanges.defaultCalendarName.getA1Notation(),
-      targetRange: refs.namedRanges.defaultCalendarName.getA1Notation(),
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].getA1Notation(),
     },
   ];
 
-  refs.namedRanges.json.setValue(jsonPayload);
-  refs.namedRanges.lastValidJson.setValue(jsonPayload);
-  refs.namedRanges.importStartDate.setValue(config.importStartDate || '');
-  refs.namedRanges.calendarNames.setValue((config.calendarNames || []).join(', '));
-  refs.namedRanges.defaultCalendarName.setValue(config.defaultCalendarName || '');
-  refs.namedRanges.validity.setValue('VALID');
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.json].setValue(jsonPayload);
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].setValue(jsonPayload);
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].setValue(config.importStartDate || '');
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].setValue((config.calendarNames || []).join(', '));
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].setValue(config.defaultCalendarName || '');
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
   return detailRows;
 }
 
-function ensureConfigSheetAndRanges_(options) {
-  const opts = options || {};
+function ensureConfigSheetAndRanges_() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
     throw new Error('No active spreadsheet available.');
   }
-  if (!opts.skipNamedRangeCleanup) {
-    removeInvalidNamedRanges_(ss);
-  }
-
-  let sheet = resolveManagedConfigSheet_(ss);
-  if (!sheet.isSheetHidden()) {
-    sheet.hideSheet();
-  }
+  const sheet = resolveManagedConfigSheet_(ss);
 
   const layout = [
-    ['Key', 'Value'],
+    [CONFIG_SHEET_SPEC.keyHeader, CONFIG_SHEET_SPEC.valueHeader],
     ['ConfigJson', ''],
     ['LastValidConfigJson', ''],
     ['ImportStartDate', ''],
     ['CalendarNames', ''],
     ['DefaultCalendarName', ''],
     ['Validity', ''],
-    ['DebugLog', ''],
   ];
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
@@ -306,200 +232,56 @@ function ensureConfigSheetAndRanges_(options) {
     sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
   }
 
-  const namedRanges = {
-    json: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.json, 2, 2),
-    lastValidJson: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.lastValidJson, 3, 2),
-    importStartDate: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.importStartDate, 4, 2),
-    calendarNames: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.calendarNames, 5, 2),
-    defaultCalendarName: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.defaultCalendarName, 6, 2),
-    validity: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.validity, 7, 2),
-    debugLog: ensureManagedNamedRange_(ss, sheet, CONFIG_SHEET_SPEC.ranges.debugLog, 8, 2),
-  };
-
-  if (toText_(namedRanges.json.getValue()).trim() === '') {
+  const cellsByKey = getConfigCellsByKey_(sheet);
+  const valuesByKey = getConfigValuesByKey_(sheet);
+  if (toText_(valuesByKey[CONFIG_SHEET_SPEC.keys.json]).trim() === '') {
     const defaultJson = JSON.stringify(DEFAULT_CONFIG, null, 2);
-    namedRanges.json.setValue(defaultJson);
-    namedRanges.lastValidJson.setValue(defaultJson);
-    namedRanges.importStartDate.setValue(DEFAULT_CONFIG.importStartDate);
-    namedRanges.calendarNames.setValue(DEFAULT_CONFIG.calendarNames.join(', '));
-    namedRanges.defaultCalendarName.setValue(DEFAULT_CONFIG.defaultCalendarName);
-    namedRanges.validity.setValue('VALID');
-    namedRanges.debugLog.setValue('');
+    cellsByKey[CONFIG_SHEET_SPEC.keys.json].setValue(defaultJson);
+    cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].setValue(defaultJson);
+    cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].setValue(DEFAULT_CONFIG.importStartDate);
+    cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].setValue(DEFAULT_CONFIG.calendarNames.join(', '));
+    cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].setValue(DEFAULT_CONFIG.defaultCalendarName);
+    cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
   }
 
-  return { sheet, namedRanges };
+  return { sheet, cellsByKey, valuesByKey: getConfigValuesByKey_(sheet) };
 }
 
 function resolveManagedConfigSheet_(ss) {
-  const preferred = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
-  if (preferred) {
-    if (!isManagedConfigSheetCandidate_(ss, preferred)) {
-      throw new Error(
-        'Sheet "Config" exists but is not managed by gcal2gsheet. Refusing to overwrite a user-owned sheet. Rename it and restore the managed "Config" sheet.'
-      );
-    }
-    return preferred;
+  const sheet = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
+  if (!sheet) {
+    throw new Error('Sheet "Config" is missing. Please create/restore it.');
   }
-
-  const technicalSheet = ss.getSheetByName(CONFIG_SHEET_SPEC.technicalName);
-  if (technicalSheet && isManagedConfigSheetCandidate_(ss, technicalSheet)) {
-    return technicalSheet;
-  }
-
-  const legacySheet = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
-  if (legacySheet && isManagedConfigSheetCandidate_(ss, legacySheet)) {
-    return legacySheet;
-  }
-
-  const prefixCandidates = ss
-    .getSheets()
-    .filter((sheet) => {
-      const name = sheet.getName();
-      return (
-        name === CONFIG_SHEET_SPEC.technicalName
-        || name.indexOf(`${CONFIG_SHEET_SPEC.technicalName}_`) === 0
-        || name === CONFIG_SHEET_SPEC.legacyName
-      );
-    });
-  for (let i = 0; i < prefixCandidates.length; i += 1) {
-    if (isManagedConfigSheetCandidate_(ss, prefixCandidates[i])) {
-      return prefixCandidates[i];
-    }
-  }
-
-  throw new Error(
-    'Managed config sheet "Config" is missing. Please create/restore the "Config" sheet; new sheets are intentionally not auto-created.'
-  );
+  return sheet;
 }
 
-function insertManagedConfigSheet_(ss) {
-  const baseName = CONFIG_SHEET_SPEC.technicalName;
-  if (!ss.getSheetByName(baseName)) {
-    return ss.insertSheet(baseName);
-  }
-
-  for (let i = 1; i <= 99; i += 1) {
-    const candidate = `${baseName}_${i}`;
-    if (!ss.getSheetByName(candidate)) {
-      return ss.insertSheet(candidate);
-    }
-  }
-
-  throw new Error(`Unable to create managed config sheet for base name ${baseName}.`);
-}
-
-function isOwnedConfigSheet_(ss, sheet) {
-  const namedRangeNames = Object.keys(CONFIG_SHEET_SPEC.ranges).map(
-    (key) => CONFIG_SHEET_SPEC.ranges[key]
-  );
-  return namedRangeNames.every((name) => {
-    return !!findManagedNamedRange_(ss, sheet, name);
-  });
-}
-
-function isManagedConfigSheetCandidate_(ss, sheet) {
-  return isOwnedConfigSheet_(ss, sheet) || hasManagedConfigLayout_(sheet);
-}
-
-function hasManagedConfigLayout_(sheet) {
-  const expectedKeys = [
-    'Key',
-    'ConfigJson',
-    'LastValidConfigJson',
-    'ImportStartDate',
-    'CalendarNames',
-    'DefaultCalendarName',
-    'Validity',
-    'DebugLog',
-  ];
-  const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
-  return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
-}
-
-function ensureManagedNamedRange_(ss, sheet, baseName, row, col) {
-  const desiredRange = sheet.getRange(row, col, 1, 1);
-  const candidateNames = [baseName, `${baseName}__GCAL2GSHEET`];
-
-  let suffix = 1;
-  while (candidateNames.length < 12) {
-    candidateNames.push(`${baseName}__GCAL2GSHEET_${suffix}`);
-    suffix += 1;
-  }
-
-  for (let i = 0; i < candidateNames.length; i += 1) {
-    const name = candidateNames[i];
-    const existing = ss.getRangeByName(name);
-    if (!existing || existing.getSheet().getSheetId() === sheet.getSheetId()) {
-      if (
-        !existing
-        || existing.getA1Notation() !== desiredRange.getA1Notation()
-        || existing.getSheet().getSheetId() !== sheet.getSheetId()
-      ) {
-        withConfigSaveDebug_(`named-range:${name}`, () => ss.setNamedRange(name, desiredRange));
+function getConfigCellsByKey_(sheet) {
+  const values = sheet.getRange(1, 1, Math.max(sheet.getLastRow(), 1), 1).getValues();
+  const cellsByKey = {};
+  Object.keys(CONFIG_SHEET_SPEC.keys).forEach((name) => {
+    const key = CONFIG_SHEET_SPEC.keys[name];
+    for (let i = 0; i < values.length; i += 1) {
+      if (toText_(values[i][0]).trim() === key) {
+        cellsByKey[key] = sheet.getRange(i + 1, 2);
+        break;
       }
-      return ss.getRangeByName(name);
     }
-  }
-
-  throw new Error(`Unable to reserve managed named range for ${baseName}.`);
-}
-
-function findManagedNamedRange_(ss, sheet, baseName) {
-  const candidateNames = [baseName, `${baseName}__GCAL2GSHEET`];
-  for (let i = 1; i <= 10; i += 1) {
-    candidateNames.push(`${baseName}__GCAL2GSHEET_${i}`);
-  }
-
-  for (let i = 0; i < candidateNames.length; i += 1) {
-    const range = ss.getRangeByName(candidateNames[i]);
-    if (range && range.getSheet().getSheetId() === sheet.getSheetId()) {
-      return range;
-    }
-  }
-
-  return null;
-}
-
-function removeInvalidNamedRanges_(ss) {
-  const managedPrefixes = [
-    ...Object.keys(CONFIG_SHEET_SPEC.ranges).map((key) => CONFIG_SHEET_SPEC.ranges[key]),
-  ];
-  const namedRanges = ss.getNamedRanges();
-  const removed = [];
-
-  namedRanges.forEach((namedRange) => {
-    const name = namedRange.getName();
-    const isManaged = managedPrefixes.some((baseName) => {
-      return (
-        name === baseName
-        || name === `${baseName}__GCAL2GSHEET`
-        || name.indexOf(`${baseName}__GCAL2GSHEET_`) === 0
-      );
-    });
-    if (!isManaged) {
-      return;
-    }
-
-    try {
-      const range = namedRange.getRange();
-      if (!range || !range.getSheet()) {
-        namedRange.remove();
-        const line = `Removed invalid named range "${name}" (missing range/sheet).`;
-        logStorageDebug_('named-range.cleanup', line);
-        removed.push(name);
-      }
-    } catch (error) {
-      namedRange.remove();
-      const line = `Removed invalid named range "${name}" due to error: ${error}`;
-      logStorageDebug_('named-range.cleanup', line);
-      removed.push(name);
+    if (!cellsByKey[key]) {
+      throw new Error(`Missing config key "${key}" in column A of Config sheet.`);
     }
   });
-  return {
-    removedCount: removed.length,
-    removedNames: removed,
-  };
+  return cellsByKey;
 }
+
+function getConfigValuesByKey_(sheet) {
+  const cellsByKey = getConfigCellsByKey_(sheet);
+  const valuesByKey = {};
+  Object.keys(cellsByKey).forEach((key) => {
+    valuesByKey[key] = cellsByKey[key].getValue();
+  });
+  return valuesByKey;
+}
+
 
 
 function withConfigSaveDebug_(phase, fn) {
@@ -664,7 +446,6 @@ function validateConfig_(config) {
   }
   assertString_(config.menu.title, 'menu.title');
   assertString_(config.menu.item, 'menu.item');
-  assertString_(config.menu.configItem, 'menu.configItem');
 
   assertString_(config.toastTitle, 'toastTitle');
 }
@@ -778,42 +559,19 @@ function logStorageDebug_(phase, message) {
   appendStorageDebugToSheet_(line);
 }
 
-function assertConfigDebugWritable_() {
-  const refs = ensureConfigSheetAndRanges_();
-  const sheet = refs.sheet;
-  const testMessage = `${new Date().toISOString()} [debug-write-test] saveConfigFromDialog_`;
-  const probeRow = 8;
-  const probeCol = 2;
-  const probeRange = sheet.getRange(probeRow, probeCol);
-  const previousValue = probeRange.getValue();
-
-  try {
-    probeRange.setValue(testMessage);
-    SpreadsheetApp.flush();
-    probeRange.setValue(previousValue);
-  } catch (error) {
-    throw new Error(`Cannot write debug information to "${CONFIG_SHEET_SPEC.legacyName}" sheet: ${error}`);
-  }
-}
 
 function appendStorageDebugToSheet_(line) {
   try {
-    const refs = ensureConfigSheetAndRanges_({ skipNamedRangeCleanup: true });
+    const refs = ensureConfigSheetAndRanges_();
     const sheet = refs.sheet;
-    const cell = refs.namedRanges.debugLog;
-    const existing = toText_(cell.getValue()).trim();
-    const existingCount = Number(existing);
-    const nextCount = Number.isFinite(existingCount) && existingCount > 0 ? existingCount + 1 : 1;
-    cell.setValue(String(nextCount));
-
-    const startRow = 10;
+    const startRow = 7;
     const maxLines = 200;
     const headerRange = sheet.getRange(startRow - 1, 1, 1, 2);
     if (
-      toText_(headerRange.getCell(1, 1).getValue()) !== 'DebugTimestamp'
-      || toText_(headerRange.getCell(1, 2).getValue()) !== 'DebugMessage'
+      toText_(headerRange.getCell(1, 1).getValue()) !== 'Timestamp'
+      || toText_(headerRange.getCell(1, 2).getValue()) !== 'Message'
     ) {
-      headerRange.setValues([['DebugTimestamp', 'DebugMessage']]);
+      headerRange.setValues([['Timestamp', 'Message']]);
     }
 
     const timestamp = new Date();

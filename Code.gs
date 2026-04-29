@@ -1,39 +1,24 @@
 function onOpen() {
   let configError = null;
-  let namedRangeCleanup = null;
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   logStorageDebug_('onOpen.start', new Date().toISOString());
   try {
-    namedRangeCleanup = removeInvalidNamedRanges_(ss);
-    logStorageDebug_(
-      'named-range.cleanup.summary',
-      `Cleanup removed ${namedRangeCleanup.removedCount} invalid named range(s).`
-    );
     refreshConfig_();
   } catch (error) {
     configError = error;
-    logStorageDebug_('named-range.cleanup.error', String(error));
+    logStorageDebug_('config.error', String(error));
   } finally {
     logStorageDebug_('onOpen.finish', new Date().toISOString());
   }
 
-  ui
+  SpreadsheetApp.getUi()
     .createMenu(CONFIG.menu.title)
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
-    .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
     .addToUi();
-
-  if (namedRangeCleanup && namedRangeCleanup.removedCount > 0) {
-    ss.toast(
-      `Named-range cleanup removed ${namedRangeCleanup.removedCount} invalid managed range(s).`,
-      CONFIG.toastTitle,
-      6
-    );
-  }
 
   if (configError) {
     ss.toast(
-      `Configuration issue detected: ${configError.message}. Open "${CONFIG.menu.configItem}" to fix.`,
+      `Configuration issue detected: ${configError.message}. Please fix values in the "Config" sheet.`,
       CONFIG.toastTitle,
       10
     );
