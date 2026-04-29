@@ -43,28 +43,22 @@ function showConfigSaveDetails_(result) {
     return;
   }
 
-  let ui = null;
-  try {
-    ui = SpreadsheetApp.getUi();
-  } catch (error) {
-    logStorageDebug_('config-save-item.ui-unavailable', String(error));
-  }
-
   details.forEach((item) => {
-    const message = [
-      `Item key: ${item.key}`,
-      `Item value: ${item.value}`,
-      `Came from range: ${item.sourceRange}`,
-      `Written to range: ${item.targetRange}`,
-    ].join('\n');
     logStorageDebug_(
       'config-save-item',
       `key=${item.key}; value=${item.value}; from=${item.sourceRange}; to=${item.targetRange}`
     );
-    if (ui) {
-      ui.alert('Configuration save detail', message, ui.ButtonSet.OK);
-    }
   });
+
+  try {
+    SpreadsheetApp.getActiveSpreadsheet().toast(
+      `Saved ${details.length} configuration item(s). Details logged to Config debug log.`,
+      CONFIG.toastTitle,
+      5
+    );
+  } catch (error) {
+    logStorageDebug_('config-save-item.ui-unavailable', String(error));
+  }
 }
 
 function resetConfigDialog_() {

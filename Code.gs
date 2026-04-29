@@ -1,11 +1,9 @@
 function onOpen() {
   let configError = null;
   let namedRangeCleanup = null;
-  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
   logStorageDebug_('onOpen.start', new Date().toISOString());
-  ui.alert('Starting Cleanup');
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
     namedRangeCleanup = removeInvalidNamedRanges_(ss);
     logStorageDebug_(
       'named-range.cleanup.summary',
@@ -17,7 +15,6 @@ function onOpen() {
     logStorageDebug_('named-range.cleanup.error', String(error));
   } finally {
     logStorageDebug_('onOpen.finish', new Date().toISOString());
-    ui.alert('Cleanup finished');
   }
 
   ui
@@ -27,15 +24,15 @@ function onOpen() {
     .addToUi();
 
   if (namedRangeCleanup && namedRangeCleanup.removedCount > 0) {
-    SpreadsheetApp.getUi().alert(
-      'Named range cleanup',
-      `Removed ${namedRangeCleanup.removedCount} invalid named range(s).`,
-      SpreadsheetApp.getUi().ButtonSet.OK
+    ss.toast(
+      `Named-range cleanup removed ${namedRangeCleanup.removedCount} invalid managed range(s).`,
+      CONFIG.toastTitle,
+      6
     );
   }
 
   if (configError) {
-    SpreadsheetApp.getActiveSpreadsheet().toast(
+    ss.toast(
       `Configuration issue detected: ${configError.message}. Open "${CONFIG.menu.configItem}" to fix.`,
       CONFIG.toastTitle,
       10
