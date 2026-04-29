@@ -29,11 +29,34 @@ function saveConfigDialog_(payload) {
   try {
     const result = saveConfigFromDialog_(payload);
     refreshConfig_();
+    showConfigSaveDetails_(result);
     return result;
   } catch (error) {
     const message = error && error.message ? error.message : String(error);
     throw new Error(`saveConfigDialog_ failed after revision ${CONFIG_DIALOG_REVISION}: ${message}`);
   }
+}
+
+function showConfigSaveDetails_(result) {
+  const details = result && Array.isArray(result.writeDetails) ? result.writeDetails : [];
+  if (details.length === 0) {
+    return;
+  }
+
+  const ui = SpreadsheetApp.getUi();
+  details.forEach((item) => {
+    const message = [
+      `Item key: ${item.key}`,
+      `Item value: ${item.value}`,
+      `Came from range: ${item.sourceRange}`,
+      `Written to range: ${item.targetRange}`,
+    ].join('\n');
+    logStorageDebug_(
+      'config-save-item',
+      `key=${item.key}; value=${item.value}; from=${item.sourceRange}; to=${item.targetRange}`
+    );
+    ui.alert('Configuration save detail', message, ui.ButtonSet.OK);
+  });
 }
 
 function resetConfigDialog_() {
