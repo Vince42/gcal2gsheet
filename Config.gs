@@ -294,6 +294,11 @@ function ensureConfigSheetAndRanges_() {
 function resolveManagedConfigSheet_(ss) {
   const preferred = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
   if (preferred) {
+    if (!isManagedConfigSheetCandidate_(ss, preferred)) {
+      throw new Error(
+        'Sheet "Config" exists but is not managed by gcal2gsheet. Refusing to overwrite a user-owned sheet. Rename it and restore the managed "Config" sheet.'
+      );
+    }
     return preferred;
   }
 
