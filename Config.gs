@@ -93,21 +93,29 @@ function getConfigForDialog_() {
 function saveConfigFromDialog_(payload) {
   const saveId = `cfg-save-${new Date().toISOString()}`;
   logStorageDebug_('save-config', `${saveId} begin`);
+  logStorageDebug_('save-config.step', '1) validate payload presence');
 
   if (!payload) {
     throw new Error('Missing configuration payload.');
   }
 
+  logStorageDebug_('save-config.step', '2) merge payload with defaults');
   const basicConfig = withConfigSaveDebug_('save-config.merge', () => mergeConfigWithDefaults_(payload.config || {}));
+  logStorageDebug_('save-config.step', '3) validate merged config');
   withConfigSaveDebug_('save-config.validate', () => validateConfig_(basicConfig));
+  logStorageDebug_('save-config.step', '4) read persisted config state');
   const persistedState = withConfigSaveDebug_('save-config.read-state', () => readConfigStateFromSheet_());
+  logStorageDebug_('save-config.step', '5) compute scope-change decision');
   const previousConfig = cloneConfig_(persistedState.config);
   const scopeChanged = !persistedState.isValid
     || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
+  logStorageDebug_('save-config.step', '6) write config values to config sheet');
   withConfigSaveDebug_('save-config.write-sheet', () => writeConfigToSheet_(basicConfig));
 
   if (scopeChanged) {
+    logStorageDebug_('save-config.step', '7) scope changed: open properties store');
     const props = getConfigPropertiesStore_();
+    logStorageDebug_('save-config.step', '8) clear sync-token properties');
     withConfigSaveDebug_('save-config.clear-sync', () => clearSyncTokenProperties_(props, [
       DEFAULT_CONFIG.propertyPrefix,
       previousConfig.propertyPrefix,
@@ -115,6 +123,7 @@ function saveConfigFromDialog_(payload) {
     ]));
   }
 
+  logStorageDebug_('save-config.step', '9) refresh in-memory CONFIG snapshot');
   CONFIG = freezeConfigCopy_(basicConfig);
   logStorageDebug_('save-config', `${saveId} done`);
   return { success: true, saveId };
@@ -283,6 +292,11 @@ function ensureConfigSheetAndRanges_() {
 }
 
 function resolveManagedConfigSheet_(ss) {
+  const preferred = ss.getSheetByName(CONFIG_SHEET_SPEC.legacyName);
+  if (preferred) {
+    return preferred;
+  }
+
   const technicalSheet = ss.getSheetByName(CONFIG_SHEET_SPEC.technicalName);
   if (technicalSheet && isManagedConfigSheetCandidate_(ss, technicalSheet)) {
     return technicalSheet;
@@ -309,7 +323,9 @@ function resolveManagedConfigSheet_(ss) {
     }
   }
 
-  return insertManagedConfigSheet_(ss);
+  throw new Error(
+    'Managed config sheet "Config" is missing. Please create/restore the "Config" sheet; new sheets are intentionally not auto-created.'
+  );
 }
 
 function insertManagedConfigSheet_(ss) {
@@ -683,7 +699,8 @@ function appendStorageDebugToSheet_(line) {
     const sheet = refs.sheet;
     const cell = refs.namedRanges.debugLog;
     const existing = toText_(cell.getValue()).trim();
-    const nextCount = existing === '' ? 1 : Number(existing) + 1;
+    const existingCount = Number(existing);
+    const nextCount = Number.isFinite(existingCount) && existingCount > 0 ? existingCount + 1 : 1;
     cell.setValue(String(nextCount));
 
     const startRow = 10;
