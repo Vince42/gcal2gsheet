@@ -43,7 +43,13 @@ function showConfigSaveDetails_(result) {
     return;
   }
 
-  const ui = SpreadsheetApp.getUi();
+  let ui = null;
+  try {
+    ui = SpreadsheetApp.getUi();
+  } catch (error) {
+    logStorageDebug_('config-save-item.ui-unavailable', String(error));
+  }
+
   details.forEach((item) => {
     const message = [
       `Item key: ${item.key}`,
@@ -55,7 +61,9 @@ function showConfigSaveDetails_(result) {
       'config-save-item',
       `key=${item.key}; value=${item.value}; from=${item.sourceRange}; to=${item.targetRange}`
     );
-    ui.alert('Configuration save detail', message, ui.ButtonSet.OK);
+    if (ui) {
+      ui.alert('Configuration save detail', message, ui.ButtonSet.OK);
+    }
   });
 }
 

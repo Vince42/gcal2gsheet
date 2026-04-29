@@ -247,12 +247,15 @@ function writeConfigToSheet_(config) {
   return detailRows;
 }
 
-function ensureConfigSheetAndRanges_() {
+function ensureConfigSheetAndRanges_(options) {
+  const opts = options || {};
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   if (!ss) {
     throw new Error('No active spreadsheet available.');
   }
-  removeInvalidNamedRanges_(ss);
+  if (!opts.skipNamedRangeCleanup) {
+    removeInvalidNamedRanges_(ss);
+  }
 
   let sheet = resolveManagedConfigSheet_(ss);
   if (!sheet.isSheetHidden()) {
@@ -458,11 +461,24 @@ function findManagedNamedRange_(ss, sheet, baseName) {
 }
 
 function removeInvalidNamedRanges_(ss) {
+  const managedPrefixes = [
+    ...Object.keys(CONFIG_SHEET_SPEC.ranges).map((key) => CONFIG_SHEET_SPEC.ranges[key]),
+  ];
   const namedRanges = ss.getNamedRanges();
   const removed = [];
 
   namedRanges.forEach((namedRange) => {
     const name = namedRange.getName();
+    const isManaged = managedPrefixes.some((baseName) => {
+      return (
+        name === baseName
+        || name === `${baseName}__GCAL2GSHEET`
+        || name.indexOf(`${baseName}__GCAL2GSHEET_`) === 0
+      );
+    });
+    if (!isManaged) {
+      return;
+    }
 
     try {
       const range = namedRange.getRange();
@@ -766,10 +782,15 @@ function assertConfigDebugWritable_() {
   const refs = ensureConfigSheetAndRanges_();
   const sheet = refs.sheet;
   const testMessage = `${new Date().toISOString()} [debug-write-test] saveConfigFromDialog_`;
-  const testRow = Math.max(sheet.getLastRow() + 1, 10);
+  const probeRow = 8;
+  const probeCol = 2;
+  const probeRange = sheet.getRange(probeRow, probeCol);
+  const previousValue = probeRange.getValue();
 
   try {
-    sheet.getRange(testRow, 1, 1, 2).setValues([[new Date(), testMessage]]);
+    probeRange.setValue(testMessage);
+    SpreadsheetApp.flush();
+    probeRange.setValue(previousValue);
   } catch (error) {
     throw new Error(`Cannot write debug information to "${CONFIG_SHEET_SPEC.legacyName}" sheet: ${error}`);
   }
@@ -777,7 +798,7 @@ function assertConfigDebugWritable_() {
 
 function appendStorageDebugToSheet_(line) {
   try {
-    const refs = ensureConfigSheetAndRanges_();
+    const refs = ensureConfigSheetAndRanges_({ skipNamedRangeCleanup: true });
     const sheet = refs.sheet;
     const cell = refs.namedRanges.debugLog;
     const existing = toText_(cell.getValue()).trim();

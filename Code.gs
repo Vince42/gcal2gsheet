@@ -1,15 +1,26 @@
 function onOpen() {
   let configError = null;
   let namedRangeCleanup = null;
+  const ui = SpreadsheetApp.getUi();
+  logStorageDebug_('onOpen.start', new Date().toISOString());
+  ui.alert('Starting Cleanup');
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     namedRangeCleanup = removeInvalidNamedRanges_(ss);
+    logStorageDebug_(
+      'named-range.cleanup.summary',
+      `Cleanup removed ${namedRangeCleanup.removedCount} invalid named range(s).`
+    );
     refreshConfig_();
   } catch (error) {
     configError = error;
+    logStorageDebug_('named-range.cleanup.error', String(error));
+  } finally {
+    logStorageDebug_('onOpen.finish', new Date().toISOString());
+    ui.alert('Cleanup finished');
   }
 
-  SpreadsheetApp.getUi()
+  ui
     .createMenu(CONFIG.menu.title)
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
     .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
