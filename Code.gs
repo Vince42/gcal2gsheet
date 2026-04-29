@@ -17,7 +17,7 @@ function onOpen() {
     logStorageDebug_('onOpen.finish', new Date().toISOString());
   }
 
-  SpreadsheetApp.getUi()
+  ui
     .createMenu(CONFIG.menu.title)
     .addItem(CONFIG.menu.item, 'updateCalendarSheets')
     .addItem(CONFIG.menu.configItem, 'showConfigDialog_')
