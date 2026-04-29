@@ -91,29 +91,33 @@ function getConfigForDialog_() {
 }
 
 function saveConfigFromDialog_(payload) {
+  const saveId = `cfg-save-${new Date().toISOString()}`;
+  logStorageDebug_('save-config', `${saveId} begin`);
+
   if (!payload) {
     throw new Error('Missing configuration payload.');
   }
 
-  const basicConfig = mergeConfigWithDefaults_(payload.config || {});
-  validateConfig_(basicConfig);
-  const persistedState = readConfigStateFromSheet_();
+  const basicConfig = withConfigSaveDebug_('save-config.merge', () => mergeConfigWithDefaults_(payload.config || {}));
+  withConfigSaveDebug_('save-config.validate', () => validateConfig_(basicConfig));
+  const persistedState = withConfigSaveDebug_('save-config.read-state', () => readConfigStateFromSheet_());
   const previousConfig = cloneConfig_(persistedState.config);
   const scopeChanged = !persistedState.isValid
     || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
-  writeConfigToSheet_(basicConfig);
+  withConfigSaveDebug_('save-config.write-sheet', () => writeConfigToSheet_(basicConfig));
 
   if (scopeChanged) {
     const props = getConfigPropertiesStore_();
-    clearSyncTokenProperties_(props, [
+    withConfigSaveDebug_('save-config.clear-sync', () => clearSyncTokenProperties_(props, [
       DEFAULT_CONFIG.propertyPrefix,
       previousConfig.propertyPrefix,
       basicConfig.propertyPrefix,
-    ]);
+    ]));
   }
 
   CONFIG = freezeConfigCopy_(basicConfig);
-  return { success: true };
+  logStorageDebug_('save-config', `${saveId} done`);
+  return { success: true, saveId };
 }
 
 function resetConfigToDefault_() {
@@ -355,7 +359,7 @@ function ensureManagedNamedRange_(ss, sheet, baseName, row, col) {
         || existing.getA1Notation() !== desiredRange.getA1Notation()
         || existing.getSheet().getSheetId() !== sheet.getSheetId()
       ) {
-        ss.setNamedRange(name, desiredRange);
+        withConfigSaveDebug_(`named-range:${name}`, () => ss.setNamedRange(name, desiredRange));
       }
       return ss.getRangeByName(name);
     }
@@ -378,6 +382,17 @@ function findManagedNamedRange_(ss, sheet, baseName) {
   }
 
   return null;
+}
+
+
+function withConfigSaveDebug_(phase, fn) {
+  try {
+    return fn();
+  } catch (error) {
+    const message = error && error.message ? error.message : String(error);
+    logStorageDebug_(phase, message);
+    throw error;
+  }
 }
 
 function getConfigPropertiesStore_() {
