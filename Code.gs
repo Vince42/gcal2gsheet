@@ -1,6 +1,8 @@
 function onOpen() {
   let configError = null;
   try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    removeInvalidManagedNamedRanges_(ss);
     refreshConfig_();
   } catch (error) {
     configError = error;

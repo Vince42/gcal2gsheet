@@ -92,6 +92,7 @@ function getConfigForDialog_() {
 
 function saveConfigFromDialog_(payload) {
   const saveId = `cfg-save-${new Date().toISOString()}`;
+  assertConfigDebugWritable_();
   logStorageDebug_('save-config', `${saveId} begin`);
   logStorageDebug_('save-config.step', '1) validate payload presence');
 
@@ -110,7 +111,7 @@ function saveConfigFromDialog_(payload) {
   const scopeChanged = !persistedState.isValid
     || hasScopeAffectingConfigChange_(previousConfig, basicConfig);
   logStorageDebug_('save-config.step', '6) write config values to config sheet');
-  withConfigSaveDebug_('save-config.write-sheet', () => writeConfigToSheet_(basicConfig));
+  const writeDetails = withConfigSaveDebug_('save-config.write-sheet', () => writeConfigToSheet_(basicConfig));
 
   if (scopeChanged) {
     logStorageDebug_('save-config.step', '7) scope changed: open properties store');
@@ -126,7 +127,7 @@ function saveConfigFromDialog_(payload) {
   logStorageDebug_('save-config.step', '9) refresh in-memory CONFIG snapshot');
   CONFIG = freezeConfigCopy_(basicConfig);
   logStorageDebug_('save-config', `${saveId} done`);
-  return { success: true, saveId };
+  return { success: true, saveId, writeDetails };
 }
 
 function resetConfigToDefault_() {
@@ -204,12 +205,46 @@ function readConfigStateFromSheet_() {
 function writeConfigToSheet_(config) {
   const refs = ensureConfigSheetAndRanges_();
   const jsonPayload = JSON.stringify(config, null, 2);
+  const detailRows = [
+    {
+      key: 'json',
+      value: jsonPayload,
+      sourceRange: refs.namedRanges.json.getA1Notation(),
+      targetRange: refs.namedRanges.json.getA1Notation(),
+    },
+    {
+      key: 'lastValidJson',
+      value: jsonPayload,
+      sourceRange: refs.namedRanges.lastValidJson.getA1Notation(),
+      targetRange: refs.namedRanges.lastValidJson.getA1Notation(),
+    },
+    {
+      key: 'importStartDate',
+      value: config.importStartDate || '',
+      sourceRange: refs.namedRanges.importStartDate.getA1Notation(),
+      targetRange: refs.namedRanges.importStartDate.getA1Notation(),
+    },
+    {
+      key: 'calendarNames',
+      value: (config.calendarNames || []).join(', '),
+      sourceRange: refs.namedRanges.calendarNames.getA1Notation(),
+      targetRange: refs.namedRanges.calendarNames.getA1Notation(),
+    },
+    {
+      key: 'defaultCalendarName',
+      value: config.defaultCalendarName || '',
+      sourceRange: refs.namedRanges.defaultCalendarName.getA1Notation(),
+      targetRange: refs.namedRanges.defaultCalendarName.getA1Notation(),
+    },
+  ];
+
   refs.namedRanges.json.setValue(jsonPayload);
   refs.namedRanges.lastValidJson.setValue(jsonPayload);
   refs.namedRanges.importStartDate.setValue(config.importStartDate || '');
   refs.namedRanges.calendarNames.setValue((config.calendarNames || []).join(', '));
   refs.namedRanges.defaultCalendarName.setValue(config.defaultCalendarName || '');
   refs.namedRanges.validity.setValue('VALID');
+  return detailRows;
 }
 
 function ensureConfigSheetAndRanges_() {
@@ -217,6 +252,7 @@ function ensureConfigSheetAndRanges_() {
   if (!ss) {
     throw new Error('No active spreadsheet available.');
   }
+  removeInvalidManagedNamedRanges_(ss);
 
   let sheet = resolveManagedConfigSheet_(ss);
   if (!sheet.isSheetHidden()) {
@@ -419,6 +455,38 @@ function findManagedNamedRange_(ss, sheet, baseName) {
   }
 
   return null;
+}
+
+function removeInvalidManagedNamedRanges_(ss) {
+  const managedPrefixes = [
+    ...Object.keys(CONFIG_SHEET_SPEC.ranges).map((key) => CONFIG_SHEET_SPEC.ranges[key]),
+  ];
+  const namedRanges = ss.getNamedRanges();
+
+  namedRanges.forEach((namedRange) => {
+    const name = namedRange.getName();
+    const isManaged = managedPrefixes.some((baseName) => {
+      return (
+        name === baseName
+        || name === `${baseName}__GCAL2GSHEET`
+        || name.indexOf(`${baseName}__GCAL2GSHEET_`) === 0
+      );
+    });
+    if (!isManaged) {
+      return;
+    }
+
+    try {
+      const range = namedRange.getRange();
+      if (!range || !range.getSheet()) {
+        namedRange.remove();
+        logStorageDebug_('named-range.cleanup', `Removed invalid managed named range "${name}".`);
+      }
+    } catch (error) {
+      namedRange.remove();
+      logStorageDebug_('named-range.cleanup', `Removed broken managed named range "${name}": ${error}`);
+    }
+  });
 }
 
 
@@ -696,6 +764,19 @@ function logStorageDebug_(phase, message) {
   console.log(line);
   Logger.log(line);
   appendStorageDebugToSheet_(line);
+}
+
+function assertConfigDebugWritable_() {
+  const refs = ensureConfigSheetAndRanges_();
+  const sheet = refs.sheet;
+  const testMessage = `${new Date().toISOString()} [debug-write-test] saveConfigFromDialog_`;
+  const testRow = Math.max(sheet.getLastRow() + 1, 10);
+
+  try {
+    sheet.getRange(testRow, 1, 1, 2).setValues([[new Date(), testMessage]]);
+  } catch (error) {
+    throw new Error(`Cannot write debug information to "${CONFIG_SHEET_SPEC.legacyName}" sheet: ${error}`);
+  }
 }
 
 function appendStorageDebugToSheet_(line) {
