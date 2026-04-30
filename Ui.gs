@@ -40,3 +40,10 @@ function buildChangedRowsMessage_(items) {
 
   return lines.join('\n');
 }
+
+function setProgress_(ss, message) {
+  if (!ss) {
+    return;
+  }
+  ss.toast(String(message || ''), CONFIG.toastTitle, 3);
+}
