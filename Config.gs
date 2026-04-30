@@ -252,7 +252,43 @@ function resolveManagedConfigSheet_(ss) {
   if (!sheet) {
     throw new Error('Sheet "Config" is missing. Please create/restore it.');
   }
+  if (!isManagedConfigSheetCandidate_(sheet)) {
+    throw new Error(
+      'Sheet "Config" exists but is not managed by this script. Rename your existing sheet and create/restore the managed Config layout.'
+    );
+  }
   return sheet;
+}
+
+function isManagedConfigSheetCandidate_(sheet) {
+  return hasManagedConfigLayout_(sheet) || hasLegacyManagedConfigLayout_(sheet);
+}
+
+function hasManagedConfigLayout_(sheet) {
+  const expectedKeys = [
+    'Key',
+    'ConfigJson',
+    'LastValidConfigJson',
+    'ImportStartDate',
+    'CalendarNames',
+    'DefaultCalendarName',
+    'Validity',
+  ];
+  const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
+  return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
+}
+
+function hasLegacyManagedConfigLayout_(sheet) {
+  const expectedKeys = [
+    'Key',
+    'ConfigJson',
+    'ImportStartDate',
+    'CalendarNames',
+    'DefaultCalendarName',
+    'Validity',
+  ];
+  const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
+  return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
 }
 
 function getConfigCellsByKey_(sheet) {
@@ -564,7 +600,7 @@ function appendStorageDebugToSheet_(line) {
   try {
     const refs = ensureConfigSheetAndRanges_();
     const sheet = refs.sheet;
-    const startRow = 7;
+    const startRow = 9;
     const maxLines = 200;
     const headerRange = sheet.getRange(startRow - 1, 1, 1, 2);
     if (
