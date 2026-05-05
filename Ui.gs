@@ -54,6 +54,9 @@ function writeStatusCellMessage_(ss, message, comment) {
   if (!ss || !CONFIG || !CONFIG.sheetName || !CONFIG.statusCell) {
     return;
   }
+  if (!isA1CellReference_(CONFIG.statusCell)) {
+    return;
+  }
   const sheet = ss.getSheetByName(CONFIG.sheetName);
   if (!sheet) {
     return;
@@ -65,4 +68,8 @@ function writeStatusCellMessage_(ss, message, comment) {
     return;
   }
   cell.setComment('');
+}
+
+function isA1CellReference_(value) {
+  return /^[A-Za-z]+[1-9][0-9]*$/.test(String(value || '').trim());
 }

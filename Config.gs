@@ -88,7 +88,7 @@ function readConfigStateFromSheet_() {
   );
   const calendarNamesOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.calendarNames]).trim();
   const defaultCalendarNameOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName]).trim();
-  const statusCellOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.statusCell]).trim();
+  const statusCellOverride = toText_(readConfigSettingValue_(refs.sheet, CONFIG_SHEET_SPEC.keys.statusCell)).trim();
 
   let parsedConfig;
   let validationMessage;
@@ -349,6 +349,21 @@ function getConfigValuesByKey_(sheet) {
   return valuesByKey;
 }
 
+function readConfigSettingValue_(sheet, settingName) {
+  const rows = Math.max(sheet.getLastRow(), 1);
+  const keyValues = sheet.getRange(1, 1, rows, 1).getValues();
+  for (let i = 0; i < keyValues.length; i += 1) {
+    const key = toText_(keyValues[i][0]).trim();
+    if (!key) {
+      break;
+    }
+    if (key === settingName) {
+      return sheet.getRange(i + 1, 2).getValue();
+    }
+  }
+  return 'n/a';
+}
+
 
 
 function withConfigSaveDebug_(phase, fn) {
@@ -464,6 +479,7 @@ function validateConfig_(config) {
   assertString_(config.stateSheetName, 'stateSheetName');
   assertString_(config.tableName, 'tableName');
   assertString_(config.statusCell, 'statusCell');
+  assertA1CellReference_(config.statusCell, 'statusCell');
   assertString_(config.importStartDate, 'importStartDate');
 
   assertStrictIsoDate_(config.importStartDate, 'importStartDate');
@@ -520,6 +536,13 @@ function validateConfig_(config) {
 function assertString_(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Invalid ${fieldName}.`);
+  }
+}
+
+function assertA1CellReference_(value, fieldName) {
+  const normalized = String(value || '').trim();
+  if (!/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
+    throw new Error(`${fieldName} must be a valid single-cell A1 reference like "L1".`);
   }
 }
 
