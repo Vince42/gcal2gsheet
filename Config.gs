@@ -120,11 +120,20 @@ function readConfigStateFromSheet_() {
   if (defaultCalendarNameOverride) {
     parsedConfig.defaultCalendarName = defaultCalendarNameOverride;
   }
+  if (
+    (!statusCellOverride || statusCellOverride === 'n/a')
+    && parsedConfig
+    && typeof parsedConfig === 'object'
+    && parsedConfig.StatusCell !== undefined
+  ) {
+    parsedConfig.statusCell = parsedConfig.StatusCell;
+  }
   if (statusCellOverride && statusCellOverride !== 'n/a') {
     parsedConfig.statusCell = statusCellOverride;
   }
 
   const merged = mergeConfigWithDefaults_(parsedConfig || {});
+  merged.statusCell = sanitizeStatusCell_(merged.statusCell, merged.header);
   if (!validationMessage) {
     try {
       validateConfig_(merged);
@@ -146,7 +155,10 @@ function readConfigStateFromSheet_() {
 
 function writeConfigToSheet_(config) {
   const refs = ensureConfigSheetAndRanges_();
-  const jsonPayload = JSON.stringify(config, null, 2);
+  const jsonConfig = cloneConfig_(config);
+  jsonConfig.StatusCell = config.statusCell || '';
+  delete jsonConfig.statusCell;
+  const jsonPayload = JSON.stringify(jsonConfig, null, 2);
   const detailRows = [
     {
       key: 'json',
@@ -297,18 +309,30 @@ function isManagedConfigSheetCandidate_(sheet) {
 }
 
 function hasManagedConfigLayout_(sheet) {
-  const expectedKeys = [
-    'Key',
-    'ConfigJson',
-    'LastValidConfigJson',
-    'StatusCell',
-    'ImportStartDate',
-    'CalendarNames',
-    'DefaultCalendarName',
-    'Validity',
+  const compatibleLayouts = [
+    [
+      'Key',
+      'ConfigJson',
+      'LastValidConfigJson',
+      'StatusCell',
+      'ImportStartDate',
+      'CalendarNames',
+      'DefaultCalendarName',
+      'Validity',
+    ],
+    [
+      'Key',
+      'ConfigJson',
+      'ImportStartDate',
+      'CalendarNames',
+      'DefaultCalendarName',
+      'Validity',
+    ],
   ];
-  const values = sheet.getRange(1, 1, expectedKeys.length, 1).getValues();
-  return expectedKeys.every((key, index) => toText_(values[index][0]) === key);
+  return compatibleLayouts.some((layout) => {
+    const values = sheet.getRange(1, 1, layout.length, 1).getValues();
+    return layout.every((key, index) => toText_(values[index][0]) === key);
+  });
 }
 
 function hasLegacyManagedConfigLayout_(sheet) {
@@ -480,8 +504,8 @@ function validateConfig_(config) {
   assertString_(config.sheetName, 'sheetName');
   assertString_(config.stateSheetName, 'stateSheetName');
   assertString_(config.tableName, 'tableName');
-  assertString_(config.statusCell, 'statusCell');
-  assertA1CellReference_(config.statusCell, 'statusCell');
+  assertString_(config.statusCell, 'StatusCell');
+  assertA1CellReference_(config.statusCell, 'StatusCell');
   assertString_(config.importStartDate, 'importStartDate');
 
   assertStrictIsoDate_(config.importStartDate, 'importStartDate');
@@ -546,6 +570,14 @@ function assertA1CellReference_(value, fieldName) {
   if (!/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
     throw new Error(`${fieldName} must be a valid single-cell A1 reference like "L1".`);
   }
+}
+
+function sanitizeStatusCell_(value, header) {
+  const normalized = String(value || '').trim();
+  if (/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
+    return normalized;
+  }
+  return buildDefaultStatusCell_(header);
 }
 
 function buildDefaultStatusCell_(header) {
