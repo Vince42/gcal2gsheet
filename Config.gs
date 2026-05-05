@@ -120,6 +120,14 @@ function readConfigStateFromSheet_() {
   if (defaultCalendarNameOverride) {
     parsedConfig.defaultCalendarName = defaultCalendarNameOverride;
   }
+  if (
+    (!statusCellOverride || statusCellOverride === 'n/a')
+    && parsedConfig
+    && typeof parsedConfig === 'object'
+    && parsedConfig.StatusCell !== undefined
+  ) {
+    parsedConfig.statusCell = parsedConfig.StatusCell;
+  }
   if (statusCellOverride && statusCellOverride !== 'n/a') {
     parsedConfig.statusCell = statusCellOverride;
   }
