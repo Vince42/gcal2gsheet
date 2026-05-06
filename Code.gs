@@ -18,7 +18,8 @@ function onOpen() {
 
   if (configError) {
     const warningMessage = `Configuration issue detected: ${configError.message}. Please fix values in the "Config" sheet.`;
-    showToastMessage_(ss, warningMessage, { severity: 'warning' });
+    ss.toast(warningMessage, CONFIG.toastTitle, 30);
+    writeStatusCellMessage_(ss, warningMessage, warningMessage);
   }
 }
 
@@ -112,12 +113,14 @@ function updateCalendarSheets() {
         buildChangedRowsMessage_(changedNotifications),
         SpreadsheetApp.getUi().ButtonSet.OK
       );
-      showToastMessage_(ss, `${changedNotifications.length} changed invoiced event(s) detected.`, {
-        severity: 'warning',
-      });
+      ss.toast(
+        `${changedNotifications.length} changed invoiced event(s) detected.`,
+        CONFIG.toastTitle,
+        15
+      );
     } else {
       setProgress_(ss, 'Done.');
-      showToastMessage_(ss, 'Calendar import finished.', { severity: 'info' });
+      ss.toast('Calendar import finished.', CONFIG.toastTitle, 15);
     }
   } finally {
     restoreUiState_(ss, uiState);

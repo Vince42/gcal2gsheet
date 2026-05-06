@@ -120,19 +120,8 @@ function readConfigStateFromSheet_() {
   if (defaultCalendarNameOverride) {
     parsedConfig.defaultCalendarName = defaultCalendarNameOverride;
   }
-  if (
-    (!statusCellOverride || statusCellOverride === 'n/a')
-    && parsedConfig
-    && typeof parsedConfig === 'object'
-    && parsedConfig.StatusCell !== undefined
-  ) {
-    parsedConfig.statusCell = parsedConfig.StatusCell;
-  }
-  if (statusCellOverride && statusCellOverride !== 'n/a') {
+  if (statusCellOverride) {
     parsedConfig.statusCell = statusCellOverride;
-  }
-  if (parsedConfig && typeof parsedConfig === 'object' && parsedConfig.StatusCell !== undefined) {
-    parsedConfig.statusCell = parsedConfig.StatusCell;
   }
 
   const merged = mergeConfigWithDefaults_(parsedConfig || {});
@@ -312,25 +301,15 @@ function isManagedConfigSheetCandidate_(sheet) {
 }
 
 function hasManagedConfigLayout_(sheet) {
-  const compatibleLayouts = [
-    [
-      'Key',
-      'ConfigJson',
-      'LastValidConfigJson',
-      'StatusCell',
-      'ImportStartDate',
-      'CalendarNames',
-      'DefaultCalendarName',
-      'Validity',
-    ],
-    [
-      'Key',
-      'ConfigJson',
-      'ImportStartDate',
-      'CalendarNames',
-      'DefaultCalendarName',
-      'Validity',
-    ],
+  const expectedKeys = [
+    'Key',
+    'ConfigJson',
+    'LastValidConfigJson',
+    'StatusCell',
+    'ImportStartDate',
+    'CalendarNames',
+    'DefaultCalendarName',
+    'Validity',
   ];
   return compatibleLayouts.some((layout) => {
     const values = sheet.getRange(1, 1, layout.length, 1).getValues();
@@ -507,8 +486,8 @@ function validateConfig_(config) {
   assertString_(config.sheetName, 'sheetName');
   assertString_(config.stateSheetName, 'stateSheetName');
   assertString_(config.tableName, 'tableName');
-  assertString_(config.statusCell, 'StatusCell');
-  assertA1CellReference_(config.statusCell, 'StatusCell');
+  assertString_(config.statusCell, 'statusCell');
+  assertA1CellReference_(config.statusCell, 'statusCell');
   assertString_(config.importStartDate, 'importStartDate');
 
   assertStrictIsoDate_(config.importStartDate, 'importStartDate');
@@ -573,31 +552,6 @@ function assertA1CellReference_(value, fieldName) {
   if (!/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
     throw new Error(`${fieldName} must be a valid single-cell A1 reference like "L1".`);
   }
-}
-
-function sanitizeStatusCell_(value, header) {
-  const normalized = String(value || '').trim();
-  if (/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
-    return normalized;
-  }
-  return buildDefaultStatusCell_(header);
-}
-
-function buildDefaultStatusCell_(header) {
-  const headerWidth = Array.isArray(header) ? header.length : 0;
-  const oneBasedColumn = Math.max(1, headerWidth + 2);
-  return `${toA1ColumnLabel_(oneBasedColumn)}1`;
-}
-
-function toA1ColumnLabel_(oneBasedColumn) {
-  let n = Number(oneBasedColumn);
-  let label = '';
-  while (n > 0) {
-    const remainder = (n - 1) % 26;
-    label = String.fromCharCode(65 + remainder) + label;
-    n = Math.floor((n - 1) / 26);
-  }
-  return label || 'A';
 }
 
 function assertStrictIsoDate_(value, fieldName) {
