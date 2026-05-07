@@ -161,10 +161,12 @@ function ensureConfigSheetAndRanges_() {
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
   const currentKeys = current.map((row) => toText_(row[0]));
+  const legacyValuesByKey = getColumnBValuesByKey_(sheet);
 
   const keysNeedWrite = layout.some((row, i) => current[i][0] !== row[0]);
   if (keysNeedWrite) {
     sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
+    restoreKnownConfigValuesAfterLayoutRewrite_(sheet, legacyValuesByKey);
   }
 
   const cellsByKey = getConfigCellsByKey_(sheet);
@@ -172,12 +174,51 @@ function ensureConfigSheetAndRanges_() {
   if (toText_(valuesByKey[CONFIG_SHEET_SPEC.keys.json]).trim() === '') {
     const defaultJson = JSON.stringify(DEFAULT_CONFIG, null, 2);
     cellsByKey[CONFIG_SHEET_SPEC.keys.json].setValue(defaultJson);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson].setValue(JSON.stringify(buildDefaultSchemaRegistry_(), null, 2));
-    cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
   }
+  ensureSchemaRegistryCellInitialized_(cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson]);
+  cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
 
   sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), layout.length), 2).setFontFamily('Courier New');
   return { sheet, cellsByKey, valuesByKey: getConfigValuesByKey_(sheet) };
+}
+
+function getColumnBValuesByKey_(sheet) {
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  const values = sheet.getRange(1, 1, lastRow, 2).getValues();
+  const byKey = {};
+  values.forEach((row) => {
+    const key = toText_(row[0]).trim();
+    if (key) {
+      byKey[key] = row[1];
+    }
+  });
+  return byKey;
+}
+
+function restoreKnownConfigValuesAfterLayoutRewrite_(sheet, legacyValuesByKey) {
+  const configJsonCell = readConfigSettingCell_(sheet, CONFIG_SHEET_SPEC.keys.json);
+  const validityCell = readConfigSettingCell_(sheet, CONFIG_SHEET_SPEC.keys.validity);
+  if (configJsonCell && legacyValuesByKey[CONFIG_SHEET_SPEC.keys.json] !== undefined) {
+    configJsonCell.setValue(legacyValuesByKey[CONFIG_SHEET_SPEC.keys.json]);
+  }
+  if (validityCell && legacyValuesByKey[CONFIG_SHEET_SPEC.keys.validity] !== undefined) {
+    validityCell.setValue(legacyValuesByKey[CONFIG_SHEET_SPEC.keys.validity]);
+  }
+}
+
+function ensureSchemaRegistryCellInitialized_(schemaRegistryCell) {
+  const defaultSchemaPayload = JSON.stringify(buildDefaultSchemaRegistry_(), null, 2);
+  const currentValue = toText_(schemaRegistryCell.getValue()).trim();
+  if (!currentValue) {
+    schemaRegistryCell.setValue(defaultSchemaPayload);
+    return;
+  }
+  try {
+    const parsed = JSON.parse(currentValue);
+    validateSchemaRegistry_(parsed);
+  } catch (error) {
+    schemaRegistryCell.setValue(defaultSchemaPayload);
+  }
 }
 
 function resolveManagedConfigSheet_(ss) {
