@@ -7,6 +7,8 @@ rg -n "SchemaRegistryJson" Config.gs >/dev/null
 rg -n "validateSchemaRegistry_" Config.gs >/dev/null
 rg -n "validateConfigStrictWithSchema_" Config.gs >/dev/null
 rg -n "unknown key" Config.gs >/dev/null
+rg -n "function resetConfigAndLogSheets_\\(" Config.gs >/dev/null
+rg -n "function findBestConfigJsonInSheet_\\(" Config.gs >/dev/null
 
 # Static smoke test for config validation UX/recovery.
 rg -n "function onOpen\(" Code.gs >/dev/null

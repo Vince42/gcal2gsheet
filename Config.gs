@@ -706,3 +706,61 @@ function ensureLogSheet_(ss) {
   sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 5).setFontFamily('Courier New');
   return sheet;
 }
+
+function resetConfigAndLogSheets_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  if (!ss) {
+    throw new Error('No active spreadsheet available.');
+  }
+
+  const configSheet = resolveManagedConfigSheet_(ss);
+  const recoveredConfig = findBestConfigJsonInSheet_(configSheet) || cloneConfig_(DEFAULT_CONFIG);
+  const normalizedConfig = mergeConfigWithDefaults_(recoveredConfig);
+  validateConfig_(normalizedConfig);
+
+  const layout = [
+    [CONFIG_SHEET_SPEC.keyHeader, CONFIG_SHEET_SPEC.valueHeader],
+    [CONFIG_SHEET_SPEC.keys.json, ''],
+    [CONFIG_SHEET_SPEC.keys.schemaRegistryJson, ''],
+    [CONFIG_SHEET_SPEC.keys.validity, ''],
+  ];
+  configSheet.getRange(1, 1, layout.length, 2).setValues(layout);
+  configSheet.getRange(2, 2).setValue(JSON.stringify(normalizedConfig, null, 2));
+  configSheet.getRange(3, 2).setValue(JSON.stringify(buildDefaultSchemaRegistry_(), null, 2));
+  configSheet.getRange(4, 2).setValue('VALID');
+  configSheet.getRange(1, 1, Math.max(configSheet.getMaxRows(), layout.length), 2).setFontFamily('Courier New');
+
+  const logSheet = ensureLogSheet_(ss);
+  const lastRow = logSheet.getLastRow();
+  if (lastRow > 1) {
+    logSheet.getRange(2, 1, lastRow - 1, 5).clearContent();
+  }
+  logSheet.getRange(1, 1, Math.max(logSheet.getMaxRows(), 1), 5).setFontFamily('Courier New');
+}
+
+function findBestConfigJsonInSheet_(sheet) {
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  const lastColumn = Math.max(sheet.getLastColumn(), 2);
+  const values = sheet.getRange(1, 1, lastRow, lastColumn).getValues();
+  let fallback = null;
+
+  for (let row = 0; row < values.length; row += 1) {
+    for (let col = 0; col < values[row].length; col += 1) {
+      const text = toText_(values[row][col]).trim();
+      if (!text || !/^\s*[\{\[]/.test(text)) {
+        continue;
+      }
+      try {
+        const parsed = JSON.parse(text);
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          const merged = mergeConfigWithDefaults_(parsed);
+          validateConfig_(merged);
+          return parsed;
+        }
+      } catch (error) {
+        fallback = fallback || null;
+      }
+    }
+  }
+  return fallback;
+}
