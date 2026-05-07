@@ -17,6 +17,22 @@ function onOpen() {
   if (configError) {
     const warningMessage = `Configuration issue detected: ${configError.message} Check the "Validity" row in the "Config" sheet for the exact validation result.`;
     showToastMessage_(ss, warningMessage, { severity: 'warning' });
+    ui.alert('Configuration validation failed', warningMessage, ui.ButtonSet.OK);
+  }
+}
+
+function onEdit(e) {
+  if (!e || !e.range) {
+    return;
+  }
+  const sheet = e.range.getSheet();
+  if (!sheet || sheet.getName() !== 'Config') {
+    return;
+  }
+  try {
+    refreshConfig_();
+  } catch (error) {
+    SpreadsheetApp.getUi().alert('Configuration validation failed', String(error.message || error), SpreadsheetApp.getUi().ButtonSet.OK);
   }
 }
 
