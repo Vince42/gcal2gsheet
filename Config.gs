@@ -56,11 +56,7 @@ const CONFIG_SHEET_SPEC = Object.freeze({
   valueHeader: 'Value',
   keys: {
     json: 'ConfigJson',
-    lastValidJson: 'LastValidConfigJson',
-    statusCell: 'StatusCell',
-    importStartDate: 'ImportStartDate',
-    calendarNames: 'CalendarNames',
-    defaultCalendarName: 'DefaultCalendarName',
+    schemaRegistryJson: 'SchemaRegistryJson',
     validity: 'Validity',
   },
 });
@@ -83,60 +79,31 @@ function refreshConfig_() {
 function readConfigStateFromSheet_() {
   const refs = ensureConfigSheetAndRanges_();
   const jsonRaw = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.json]).trim();
-  const lastValidJsonRaw = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.lastValidJson]).trim();
-  const importStartDateOverride = normalizeDateCellToIsoOrText_(
-    refs.valuesByKey[CONFIG_SHEET_SPEC.keys.importStartDate],
-    SpreadsheetApp.getActiveSpreadsheet().getSpreadsheetTimeZone()
-  );
-  const calendarNamesOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.calendarNames]).trim();
-  const defaultCalendarNameOverride = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName]).trim();
-  const statusCellOverride = toText_(readConfigSettingValue_(refs.sheet, CONFIG_SHEET_SPEC.keys.statusCell)).trim();
+  const schemaRaw = toText_(refs.valuesByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson]).trim();
 
   let parsedConfig;
   let validationMessage;
   try {
-    parsedConfig = jsonRaw ? JSON.parse(jsonRaw) : cloneConfig_(DEFAULT_CONFIG);
+    parsedConfig = JSON.parse(jsonRaw);
   } catch (error) {
+    validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}`;
+  }
+
+  let schemaRegistry;
+  if (!validationMessage) {
     try {
-      parsedConfig = lastValidJsonRaw
-        ? JSON.parse(lastValidJsonRaw)
-        : cloneConfig_(DEFAULT_CONFIG);
-      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}. Restored the last valid configuration snapshot; fix ${CONFIG_SHEET_SPEC.keys.json} and save.`;
-    } catch (fallbackError) {
-      parsedConfig = cloneConfig_(DEFAULT_CONFIG);
-      validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}. No valid snapshot available; defaults loaded.`;
+      schemaRegistry = JSON.parse(schemaRaw);
+      validateSchemaRegistry_(schemaRegistry);
+    } catch (error) {
+      validationMessage = `Invalid ${CONFIG_SHEET_SPEC.keys.schemaRegistryJson}: ${error.message}`;
     }
   }
 
-  if (importStartDateOverride) {
-    parsedConfig.importStartDate = importStartDateOverride;
-  }
-  if (calendarNamesOverride) {
-    parsedConfig.calendarNames = calendarNamesOverride
-      .split(',')
-      .map((v) => v.trim())
-      .filter((v) => v);
-  }
-  if (defaultCalendarNameOverride) {
-    parsedConfig.defaultCalendarName = defaultCalendarNameOverride;
-  }
-  if (
-    (!statusCellOverride || statusCellOverride === 'n/a')
-    && parsedConfig
-    && typeof parsedConfig === 'object'
-    && parsedConfig.StatusCell !== undefined
-  ) {
-    parsedConfig.statusCell = parsedConfig.StatusCell;
-  }
-  if (statusCellOverride && statusCellOverride !== 'n/a') {
-    parsedConfig.statusCell = statusCellOverride;
-  }
-
-  const merged = mergeConfigWithDefaults_(parsedConfig || {});
-  merged.statusCell = sanitizeStatusCell_(merged.statusCell, merged.header);
+  let merged = null;
   if (!validationMessage) {
     try {
-      validateConfig_(merged);
+      merged = mergeConfigWithDefaults_(parsedConfig || {});
+      validateConfigStrictWithSchema_(merged, parsedConfig || {}, schemaRegistry);
       validationMessage = 'VALID';
     } catch (error) {
       validationMessage = error.message;
@@ -149,16 +116,14 @@ function readConfigStateFromSheet_() {
   return {
     isValid,
     message: validationMessage,
-    config: merged,
+    config: merged || mergeConfigWithDefaults_({}),
   };
 }
 
 function writeConfigToSheet_(config) {
   const refs = ensureConfigSheetAndRanges_();
-  const jsonConfig = cloneConfig_(config);
-  jsonConfig.StatusCell = config.statusCell || '';
-  delete jsonConfig.statusCell;
-  const jsonPayload = JSON.stringify(jsonConfig, null, 2);
+  const jsonPayload = JSON.stringify(cloneConfig_(config), null, 2);
+  const schemaPayload = JSON.stringify(buildDefaultSchemaRegistry_(), null, 2);
   const detailRows = [
     {
       key: 'json',
@@ -167,43 +132,15 @@ function writeConfigToSheet_(config) {
       targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.json].getA1Notation(),
     },
     {
-      key: 'lastValidJson',
-      value: jsonPayload,
-      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].getA1Notation(),
-      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].getA1Notation(),
-    },
-    {
-      key: 'statusCell',
-      value: config.statusCell || '',
-      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.statusCell].getA1Notation(),
-      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.statusCell].getA1Notation(),
-    },
-    {
-      key: 'importStartDate',
-      value: config.importStartDate || '',
-      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].getA1Notation(),
-      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].getA1Notation(),
-    },
-    {
-      key: 'calendarNames',
-      value: (config.calendarNames || []).join(', '),
-      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].getA1Notation(),
-      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].getA1Notation(),
-    },
-    {
-      key: 'defaultCalendarName',
-      value: config.defaultCalendarName || '',
-      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].getA1Notation(),
-      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].getA1Notation(),
+      key: 'schemaRegistryJson',
+      value: schemaPayload,
+      sourceRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson].getA1Notation(),
+      targetRange: refs.cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson].getA1Notation(),
     },
   ];
 
   refs.cellsByKey[CONFIG_SHEET_SPEC.keys.json].setValue(jsonPayload);
-  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].setValue(jsonPayload);
-  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.statusCell].setValue(config.statusCell || '');
-  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].setValue(config.importStartDate || '');
-  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].setValue((config.calendarNames || []).join(', '));
-  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].setValue(config.defaultCalendarName || '');
+  refs.cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson].setValue(schemaPayload);
   refs.cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
   return detailRows;
 }
@@ -218,46 +155,18 @@ function ensureConfigSheetAndRanges_() {
   const layout = [
     [CONFIG_SHEET_SPEC.keyHeader, CONFIG_SHEET_SPEC.valueHeader],
     ['ConfigJson', ''],
-    ['LastValidConfigJson', ''],
-    ['StatusCell', ''],
-    ['ImportStartDate', ''],
-    ['CalendarNames', ''],
-    ['DefaultCalendarName', ''],
+    ['SchemaRegistryJson', ''],
     ['Validity', ''],
   ];
 
   const current = sheet.getRange(1, 1, layout.length, 1).getValues();
-  const legacyLayoutKeys = [
-    'Key',
-    'ConfigJson',
-    'ImportStartDate',
-    'CalendarNames',
-    'DefaultCalendarName',
-    'Validity',
-  ];
   const currentKeys = current.map((row) => toText_(row[0]));
-  const isLegacyLayout = legacyLayoutKeys.every((key, i) => currentKeys[i] === key);
-  if (isLegacyLayout) {
-    const legacyValues = sheet.getRange(2, 2, legacyLayoutKeys.length - 1, 1).getValues();
-    const jsonValue = legacyValues[0][0];
-    const importStartDateValue = legacyValues[1][0];
-    const calendarNamesValue = legacyValues[2][0];
-    const defaultCalendarNameValue = legacyValues[3][0];
-    const validityValue = legacyValues[4][0];
-    sheet.getRange(2, 2, 7, 1).setValues([
-      [jsonValue],
-      [jsonValue],
-      [DEFAULT_CONFIG.statusCell],
-      [importStartDateValue],
-      [calendarNamesValue],
-      [defaultCalendarNameValue],
-      [validityValue],
-    ]);
-  }
+  const legacyValuesByKey = getColumnBValuesByKey_(sheet);
 
   const keysNeedWrite = layout.some((row, i) => current[i][0] !== row[0]);
   if (keysNeedWrite) {
     sheet.getRange(1, 1, layout.length, 1).setValues(layout.map((row) => [row[0]]));
+    restoreKnownConfigValuesAfterLayoutRewrite_(sheet, legacyValuesByKey);
   }
 
   const cellsByKey = getConfigCellsByKey_(sheet);
@@ -265,15 +174,51 @@ function ensureConfigSheetAndRanges_() {
   if (toText_(valuesByKey[CONFIG_SHEET_SPEC.keys.json]).trim() === '') {
     const defaultJson = JSON.stringify(DEFAULT_CONFIG, null, 2);
     cellsByKey[CONFIG_SHEET_SPEC.keys.json].setValue(defaultJson);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.lastValidJson].setValue(defaultJson);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.statusCell].setValue(DEFAULT_CONFIG.statusCell);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.importStartDate].setValue(DEFAULT_CONFIG.importStartDate);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.calendarNames].setValue(DEFAULT_CONFIG.calendarNames.join(', '));
-    cellsByKey[CONFIG_SHEET_SPEC.keys.defaultCalendarName].setValue(DEFAULT_CONFIG.defaultCalendarName);
-    cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
   }
+  ensureSchemaRegistryCellInitialized_(cellsByKey[CONFIG_SHEET_SPEC.keys.schemaRegistryJson]);
+  cellsByKey[CONFIG_SHEET_SPEC.keys.validity].setValue('VALID');
 
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), layout.length), 2).setFontFamily('Courier New');
   return { sheet, cellsByKey, valuesByKey: getConfigValuesByKey_(sheet) };
+}
+
+function getColumnBValuesByKey_(sheet) {
+  const lastRow = Math.max(sheet.getLastRow(), 1);
+  const values = sheet.getRange(1, 1, lastRow, 2).getValues();
+  const byKey = {};
+  values.forEach((row) => {
+    const key = toText_(row[0]).trim();
+    if (key) {
+      byKey[key] = row[1];
+    }
+  });
+  return byKey;
+}
+
+function restoreKnownConfigValuesAfterLayoutRewrite_(sheet, legacyValuesByKey) {
+  const configJsonCell = readConfigSettingCell_(sheet, CONFIG_SHEET_SPEC.keys.json);
+  const validityCell = readConfigSettingCell_(sheet, CONFIG_SHEET_SPEC.keys.validity);
+  if (configJsonCell && legacyValuesByKey[CONFIG_SHEET_SPEC.keys.json] !== undefined) {
+    configJsonCell.setValue(legacyValuesByKey[CONFIG_SHEET_SPEC.keys.json]);
+  }
+  if (validityCell && legacyValuesByKey[CONFIG_SHEET_SPEC.keys.validity] !== undefined) {
+    validityCell.setValue(legacyValuesByKey[CONFIG_SHEET_SPEC.keys.validity]);
+  }
+}
+
+function ensureSchemaRegistryCellInitialized_(schemaRegistryCell) {
+  const defaultSchemaPayload = JSON.stringify(buildDefaultSchemaRegistry_(), null, 2);
+  const currentValue = toText_(schemaRegistryCell.getValue()).trim();
+  if (!currentValue) {
+    schemaRegistryCell.setValue(defaultSchemaPayload);
+    return;
+  }
+  try {
+    const parsed = JSON.parse(currentValue);
+    validateSchemaRegistry_(parsed);
+  } catch (error) {
+    schemaRegistryCell.setValue(defaultSchemaPayload);
+  }
 }
 
 function resolveManagedConfigSheet_(ss) {
@@ -497,6 +442,38 @@ function mergeKnownShape_(baseValue, overrideValue) {
   return overrideValue;
 }
 
+
+function buildDefaultSchemaRegistry_() {
+  return {
+    allowedKeys: Object.keys(DEFAULT_CONFIG).sort(),
+  };
+}
+
+function validateSchemaRegistry_(schemaRegistry) {
+  if (!schemaRegistry || typeof schemaRegistry !== 'object') {
+    throw new Error('schema registry must be an object.');
+  }
+  if (!Array.isArray(schemaRegistry.allowedKeys) || schemaRegistry.allowedKeys.length === 0) {
+    throw new Error('schema registry must contain non-empty allowedKeys array.');
+  }
+  schemaRegistry.allowedKeys.forEach((key, index) => {
+    if (typeof key !== 'string' || !key.trim()) {
+      throw new Error(`schema registry allowedKeys[${index}] must be a non-empty string.`);
+    }
+  });
+}
+
+function validateConfigStrictWithSchema_(normalizedConfig, rawConfig, schemaRegistry) {
+  const raw = rawConfig || {};
+  const allowedKeys = new Set(schemaRegistry.allowedKeys);
+  Object.keys(raw).forEach((key) => {
+    if (!allowedKeys.has(key)) {
+      throw new Error(`Invalid config: unknown key "${key}" is not allowed.`);
+    }
+  });
+  validateConfig_(normalizedConfig);
+}
+
 function validateConfig_(config) {
   assertString_(config.sheetName, 'sheetName');
   assertString_(config.stateSheetName, 'stateSheetName');
@@ -700,30 +677,32 @@ function logStorageDebug_(phase, message) {
 
 function appendStorageDebugToSheet_(line) {
   try {
-    const refs = ensureConfigSheetAndRanges_();
-    const sheet = refs.sheet;
-    const startRow = 9;
-    const maxLines = 200;
-    const headerRange = sheet.getRange(startRow - 1, 1, 1, 2);
-    if (
-      toText_(headerRange.getCell(1, 1).getValue()) !== 'Timestamp'
-      || toText_(headerRange.getCell(1, 2).getValue()) !== 'Message'
-    ) {
-      headerRange.setValues([['Timestamp', 'Message']]);
-    }
-
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ensureLogSheet_(ss);
+    const startRow = 2;
+    const maxLines = 500;
     const timestamp = new Date();
     let nextRow = Math.max(sheet.getLastRow() + 1, startRow);
     if (nextRow >= startRow + maxLines) {
-      sheet
-        .getRange(startRow + 1, 1, maxLines - 1, 2)
-        .moveTo(sheet.getRange(startRow, 1, maxLines - 1, 2));
+      sheet.getRange(startRow + 1, 1, maxLines - 1, 5).moveTo(sheet.getRange(startRow, 1, maxLines - 1, 5));
       nextRow = startRow + maxLines - 1;
     }
-    sheet.getRange(nextRow, 1, 1, 2).setValues([[timestamp, line]]);
+    sheet.getRange(nextRow, 1, 1, 5).setValues([[timestamp, 'DEBUG', 'storage', line, '']]);
   } catch (error) {
     const fallback = `[storage-debug] failed to persist debug line: ${error}`;
     console.log(fallback);
     Logger.log(fallback);
   }
+}
+
+function ensureLogSheet_(ss) {
+  let sheet = ss.getSheetByName('Log');
+  if (!sheet) {
+    sheet = ss.insertSheet('Log');
+  }
+  const headers = [['Timestamp', 'Level', 'Component', 'Message', 'DetailsJson']];
+  const range = sheet.getRange(1, 1, 1, 5);
+  range.setValues(headers);
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 5).setFontFamily('Courier New');
+  return sheet;
 }

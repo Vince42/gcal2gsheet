@@ -1,20 +1,22 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Static smoke test for config/status-cell hardening.
-rg -n "statusCell:\s*buildDefaultStatusCell_\(DEFAULT_HEADER\)" Config.gs >/dev/null
-rg -n "function buildDefaultStatusCell_\(" Config.gs >/dev/null
-rg -n "function readConfigSettingValue_\(" Config.gs >/dev/null
-rg -n "statusCellOverride && statusCellOverride !== 'n/a'" Config.gs >/dev/null
-rg -n "assertA1CellReference_\(config.statusCell" Config.gs >/dev/null
-rg -n "function writeStatusCellMessage_\(" Ui.gs >/dev/null
+# Static smoke test for strict ConfigJson + schema registry.
+rg -n "function readConfigStateFromSheet_\(" Config.gs >/dev/null
+rg -n "SchemaRegistryJson" Config.gs >/dev/null
+rg -n "validateSchemaRegistry_" Config.gs >/dev/null
+rg -n "validateConfigStrictWithSchema_" Config.gs >/dev/null
+rg -n "unknown key" Config.gs >/dev/null
 
-# Static smoke test for menu recovery hardening.
+# Static smoke test for config validation UX/recovery.
 rg -n "function onOpen\(" Code.gs >/dev/null
 rg -n "ensureMenuVisible_\(ui\)" Code.gs >/dev/null
-rg -n "if \(configError\)" Code.gs >/dev/null
-rg -n "function ensureMenuVisible_\(" Code.gs >/dev/null
-rg -n "ui\.createMenu\(menuTitle\)" Code.gs >/dev/null
-rg -n "ui\.createMenu\(fallbackTitle\)" Code.gs >/dev/null
+rg -n "ui\.alert\('Configuration validation failed'" Code.gs >/dev/null
+rg -n "function onEdit\(e\)" Code.gs >/dev/null
+
+# Static smoke test for structured Log sheet.
+rg -n "function ensureLogSheet_\(" Config.gs >/dev/null
+rg -n "DetailsJson" Config.gs >/dev/null
+rg -n "setFontFamily\('Courier New'\)" Config.gs >/dev/null
 
 echo "smoke-test: PASS"
