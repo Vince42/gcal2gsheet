@@ -1,0 +1,9 @@
+# Pull Request Checklist
+
+- [ ] I identified all affected ADRs.
+- [ ] I identified all affected invariants.
+- [ ] I listed the acceptance tests before coding.
+- [ ] I did not change architecture without an ADR update.
+- [ ] I did not touch unrelated modules.
+- [ ] I verified recovery behavior if config, logging, menu, or startup code changed.
+- [ ] I verified import invariants if calendar, state, duplicate, table, or sync logic changed.

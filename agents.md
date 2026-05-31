@@ -193,3 +193,26 @@ No agent may commit unless every gate below is explicitly checked in the PR note
 - **review agent**: blocks commit if any mandatory release gate is not satisfied.
 - **security agent**: blocks commit if credentials handling violates Security gate.
 - **release agent**: blocks PR publication unless checks and evidence are documented.
+
+## Pull Request Reasoning Gate
+
+Before modifying code, the agent must produce a short implementation plan containing:
+
+1. Affected ADRs
+2. Affected invariants
+3. Acceptance tests that must pass
+4. Regression risks
+5. Files expected to change
+6. Files that must not change
+
+The agent must not implement the change until this plan exists.
+
+Every pull request description must contain:
+
+```text
+Affected ADRs:
+Affected invariants:
+Acceptance tests:
+Regression risks:
+Manual verification:
+```
