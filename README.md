@@ -27,15 +27,13 @@ The script is designed to:
 
 ## Calendars
 
-Current calendar list:
+Calendars are configured in `ConfigJson` on the `Config` sheet:
 
-- `Event`
-- `dedc`
-- `EEC`
-- `CTG`
+- `calendarNames` lists the visible Google Calendar names to import.
+- `defaultCalendarName` identifies the general/default calendar used for duplicate precedence.
 
-`Event` is treated as the default calendar.  
-Specific calendars beat the default calendar during duplicate cleanup.
+Specific calendars beat the configured default calendar during duplicate cleanup.
+Keep calendar names and priority order in configuration rather than documenting personal calendar names in this README.
 
 ---
 
@@ -55,23 +53,79 @@ It contains exactly these columns in this order:
 4. `Start`
 5. `End`
 6. `Duration`
+7. `Status`
+
+`Status` is derived from event identity stored in hidden state and the durable register sheets. The normal states are:
+
+- `Open` — no matching register row exists yet
+- `Invoiced` — the event is listed in `Invoicing`
+- `Non-billable` — the event is listed in `Non-Billable`
+
+Changed follow-up rows may temporarily show `Changed` until reviewed.
+
+### Invoicing worksheet
+
+The durable invoicing worksheet is always:
+
+- `Invoicing`
+
+It contains the invoice register table with these visible columns:
+
+1. `Calendar`
+2. `Event`
+3. `Date`
+4. `Start`
+5. `End`
+6. `Duration`
 7. `Customer`
 8. `Project`
 9. `InvoiceNumber`
 10. `InvoiceDate`
 
+### Non-billable worksheet
+
+The durable non-billable register worksheet is always:
+
+- `Non-Billable`
+
+It contains event records that should not become invoices:
+
+1. `Calendar`
+2. `Event`
+3. `Date`
+4. `Start`
+5. `End`
+6. `Duration`
+7. `Reason`
+
 ### Hidden worksheet
 
-The technical worksheet is always:
+The calendar technical worksheet is always:
 
 - `_calendar_state`
 
-It stores one technical row per visible data row:
+It stores one technical row per visible `Calendar` data row:
 
 - `EventKey`
 - `RowKind`
 
-This sheet must remain hidden and must not be edited manually.
+The invoicing technical worksheet is always:
+
+- `_invoicing_state`
+
+It stores one technical row per visible `Invoicing` data row:
+
+- `EventKey`
+
+The non-billable technical worksheet is always:
+
+- `_non_billable_state`
+
+It stores one technical row per visible `Non-Billable` data row:
+
+- `EventKey`
+
+These technical sheets must remain hidden and must not be edited manually.
 
 ---
 
@@ -126,46 +180,57 @@ The script excludes:
 
 ## Update rules
 
-The script performs a full rebuild on every run.
+The script performs a full import of the configured Calendar scope and rebuilds the managed worksheet rows on every run.
 
-That is intentional.
+That is intentional. A full import is slower than an incremental sync, but it gives the import a self-healing property: if a managed event row was accidentally removed from the visible sheet, the next update can recreate the calendar-derived row from Google Calendar as long as the event is still inside the managed scope.
 
 The rebuild strategy is:
 
-1. read the current visible sheet
-2. read the hidden technical state sheet
-3. fetch all relevant calendar events inside the managed scope
-4. normalize imported events
-5. remove duplicates among imported events
-6. merge imported events with existing rows
-7. preserve invoicing-related user-entered columns
-8. generate changed follow-up rows for changed invoiced events
-9. remove duplicates again on the final row set
-10. rewrite the visible sheet in bulk
-11. rewrite the hidden state sheet in bulk
-12. refresh number formats, row colors, and the table range
+1. check that all managed visible and hidden sheets exist
+2. check that each managed sheet has the expected columns
+3. read the current visible sheet
+4. read the hidden technical state sheet
+5. fetch all calendar event data for the managed scope
+6. normalize imported events
+7. remove duplicates among imported events
+8. merge imported events with existing rows
+9. migrate legacy invoice data from old `Calendar` invoice columns into `Invoicing` when needed
+10. mark imported rows as `Invoiced`, `Non-billable`, or `Open` by looking up their `EventKey` in register state sheets
+11. generate changed follow-up rows for changed registered events
+12. remove duplicates again on eligible final rows
+13. rewrite the visible `Calendar` sheet in bulk
+14. rewrite the hidden calendar state sheet in bulk
+15. refresh number formats, row colors, and the table ranges
 
-This avoids complicated incremental-sync edge cases and keeps behavior deterministic.
+This keeps visible/state row alignment deterministic and favors correctness over minimizing Calendar API fetch volume. If a managed sheet is missing, the script recreates it; if expected columns do not match after repair, the update stops instead of silently writing into the wrong shape.
 
 ---
 
-## Invoicing logic
+## Status logic
 
-### Uninvoiced rows
+### Open rows
 
-A row is considered uninvoiced if:
+A calendar row is `Open` if:
 
-- `InvoiceNumber` is empty
+- its `EventKey` does not exist in `_invoicing_state` or `_non_billable_state`
 
-Uninvoiced rows are updated silently in place when the matching calendar event changes.
+Open rows are updated silently in place when the matching calendar event changes.
 
 ### Invoiced rows
 
-A row is considered invoiced if:
+A calendar row is `Invoiced` if:
 
-- `InvoiceNumber` is not empty
+- its `EventKey` exists in `_invoicing_state` / the `Invoicing` register
 
-If an invoiced event changes:
+### Non-billable rows
+
+A calendar row is `Non-billable` if:
+
+- its `EventKey` exists in `_non_billable_state` / the `Non-Billable` register
+
+This name is preferred over `Non-Invoicing` because it describes the business decision: the event should not be billed.
+
+If an invoiced or non-billable event changes:
 
 - the original row remains unchanged
 - a new follow-up row is created directly below the historical invoiced row
@@ -176,7 +241,65 @@ If an invoiced event changes:
 
 `InvoiceDate` currently has no control logic.
 
-It is stored and preserved, but not used as a decision criterion.
+It is stored and preserved in `Invoicing`, but not used as a decision criterion.
+
+### Recovery after accidental row deletion
+
+A later update can recreate missing calendar-derived rows because every update performs a full import of the managed scope. The recovery boundary is the data source:
+
+- Calendar fields can be imported again if the event still exists and is still inside the managed scope.
+- User-entered invoicing data (`Customer`, `Project`, `InvoiceNumber`, `InvoiceDate`) is preserved in `Invoicing`, keyed by hidden event identity in `_invoicing_state`.
+- Non-billable decisions are preserved in `Non-Billable`, keyed by hidden event identity in `_non_billable_state`.
+- If a register row is deleted from both its visible register and hidden state sheet, that business metadata cannot be reconstructed from Google Calendar. Restore it from Google Sheets version history, a backup, or another business record.
+
+### User-entered information and adjacent columns
+
+Only managed table columns are row-aware during rebuilds:
+
+- Calendar import/review columns live in `Calendar`.
+- Durable invoice business columns live in `Invoicing`.
+- Durable non-billable decisions live in `Non-Billable`.
+- Technical identity lives in `_calendar_state`, `_invoicing_state`, and `_non_billable_state`.
+
+Do not store per-event business information in columns adjacent to either managed table. The script rewrites and sorts managed rows in bulk, so adjacent cells outside managed tables are not guaranteed to stay aligned with the same event. If more per-event fields are required, add them deliberately to the managed schema and state-preservation logic rather than placing them beside the table.
+
+---
+
+## Architecture: separate status registers
+
+The status model treats the Calendar import as a reproducible source view and business decisions as durable register records:
+
+1. Keep `Calendar` as an import/review table that is always rebuilt from Google Calendar.
+2. Keep `Invoicing` as the invoice register table, with one row per invoiced event.
+3. Keep `Non-Billable` as the non-billable register table, with one row per event that should not be billed.
+4. Store stable event identity (`EventKey`, built from calendar ID and event ID) in hidden register state sheets.
+5. Mark imported calendar rows as `Invoiced`, `Non-billable`, or `Open` by looking up their `EventKey` in those state sheets.
+6. Preserve business metadata in register sheets, not in cells that can disappear during import-table repair.
+
+Invoice register columns:
+
+- `Calendar`
+- `Event`
+- `Date`
+- `Start`
+- `End`
+- `Duration`
+- `Customer`
+- `Project`
+- `InvoiceNumber`
+- `InvoiceDate`
+
+Non-billable register columns:
+
+- `Calendar`
+- `Event`
+- `Date`
+- `Start`
+- `End`
+- `Duration`
+- `Reason`
+
+With this model, a deleted import row is harmless: the full import recreates the calendar row, and the register sheets mark it with the correct status again by `EventKey`. If the calendar event later changes, the import can compare the current calendar signature with the existing state and create an explicit review item instead of risking silent data loss.
 
 ---
 
@@ -201,7 +324,7 @@ If the same duplicate appears multiple times in the same calendar:
 
 If at least one specific calendar row exists for a duplicate:
 
-- all `Event` rows for that duplicate are removed
+- all rows from the configured default calendar for that duplicate are removed
 
 #### Rule three: multiple specific calendars
 
@@ -210,12 +333,7 @@ If duplicates still remain across multiple non-default calendars:
 - only one survives according to configured calendar priority
 - the rest are removed
 
-Current priority is derived from:
-
-- `dedc`
-- `EEC`
-- `CTG`
-- `Event`
+Priority is derived from the configured `calendarNames` order, with non-default calendars considered before `defaultCalendarName`.
 
 This logic is applied:
 
@@ -241,26 +359,35 @@ Formats:
 - `Start` → `hh:mm`
 - `End` → `hh:mm`
 - `Duration` → `hh:mm`
-- `InvoiceDate` → `yyyy-mm-dd`
+- `InvoiceDate` in `Invoicing` → `yyyy-mm-dd`
 
 ### Row colors
 
-- normal rows → black font
-- invoiced rows → dark red font
-- changed follow-up rows → dark green font
+Row colors communicate the invoicing state after each update:
+
+- normal, `Open` `Calendar` rows → black font
+- `Calendar` rows whose `EventKey` exists in the `Invoicing` register → dark red font
+- `Calendar` rows whose `EventKey` exists in the `Non-Billable` register → gray font
+- changed follow-up rows that are not yet in a register → dark green font
+
+Color precedence is intentional: register states (`Invoiced`, `Non-billable`) take precedence over review state.
 
 ---
 
-## Google Sheets table object
+## Google Sheets table objects
 
-The visible worksheet contains one native Google Sheets table object:
+The visible managed worksheets contain native Google Sheets table objects:
 
-- table name: `Calendar`
+- `Calendar` table on the `Calendar` sheet
+- `Invoicing` table on the `Invoicing` sheet
+- `NonBillable` table on the `Non-Billable` sheet
 
-The script keeps the table range aligned with the current data body through the Sheets API.
+The script keeps all managed table ranges aligned with their current data bodies through the Sheets API.
 
-The table itself is not used as the business logic store.  
-It is treated as a workbook UI structure that must remain present and consistent.
+The table names are formula-compatible identifiers; for example, the `Non-Billable` sheet uses the `NonBillable` table name because Google Sheets table names cannot contain hyphens.
+
+The tables themselves are not used as hidden business logic stores.
+They are treated as workbook UI structures that must remain present and consistent.
 
 ---
 
@@ -269,7 +396,7 @@ It is treated as a workbook UI structure that must remain present and consistent
 During execution, progress is written to:
 
 - toast notifications
-- `Calendar!L1`
+- the configured status cell on the `Calendar` sheet (`CONFIG.statusCell`)
 
 This gives the user visible runtime feedback without using modal dialogs during processing.
 
@@ -297,6 +424,12 @@ Calendar resolution and event fetching.
 
 ### `State Store.gs`
 Read and write logic for `_calendar_state`.
+
+### `Invoicing Store.gs`
+Read, migrate, and look up invoice-register rows and `_invoicing_state`.
+
+### `Non Billable Store.gs`
+Read, repair, and look up non-billable register rows and `_non_billable_state`.
 
 ### `Rebuild Engine.gs`
 Main merge and rebuild logic.
@@ -340,27 +473,29 @@ Without them, table maintenance and Calendar API event listing will fail.
 
 - The workbook timezone is the source of truth for formatting.
 - Calendar names are resolved by exact visible calendar name.
-- The hidden state sheet must stay aligned row-for-row with the visible sheet.
-- User edits are expected only in the visible business columns.
-- The hidden technical sheet is internal implementation state.
+- Hidden state sheets must stay aligned row-for-row with their visible managed sheets.
+- User invoice edits are expected in the visible `Invoicing` business columns.
+- User non-billable decisions are expected in the visible `Non-Billable` register.
+- Hidden technical sheets are internal implementation state.
 
 ---
 
 ## Known design decisions
 
-### Full rebuild instead of incremental sync
+### Full-scope import for self-healing reconciliation
 
-The project currently uses a full rebuild on each run.
+The project fetches the full managed Calendar scope and rebuilds the managed worksheet rows on each run.
 
 Reason:
 
-- incremental sync with `syncToken` complicates scope changes
-- incremental sync cannot be combined with several useful query parameters
-- correctness is currently more important than sync-token optimization
+- missing visible rows can be recreated from Google Calendar on the next update
+- the visible `Calendar` / `Invoicing` / `Non-Billable` sheets and hidden state sheets must stay row-aligned
+- scope-affecting configuration changes require full-scope reasoning rather than stale incremental assumptions
+- correctness and trust are more important than minimizing API fetches
 
 ### Hidden technical state sheet instead of developer metadata
 
-The project uses `_calendar_state` instead of row-level developer metadata.
+The project uses hidden state sheets instead of row-level developer metadata.
 
 Reason:
 
@@ -421,9 +556,7 @@ Required GitHub repository secrets:
   The full JSON contents of a valid `~/.clasprc.json` for `clasp`.
   Base64-encoded JSON is also accepted.
 
-Configured target Script ID:
-
-- `1XlO8Fb7sktGCrmdqbwtpgLarTw6HpoXUAA7Vv6oakA5OcMDmqHSTm0lC`
+Target Apps Script IDs are environment-specific and must not be documented with personal or production identifiers in this README. Store deployment targets in local `.clasp.json` files or protected CI secrets, never in committed documentation unless they are intentionally public test fixtures.
 
 Optional safety recommendation:
 

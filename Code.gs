@@ -80,60 +80,59 @@ function updateCalendarSheets() {
     setProgress_(ss, 'Resolving calendars...');
     const calendars = resolveCalendars_();
 
-    setProgress_(ss, 'Preparing sheets...');
-    const sheet = ensureCalendarSheet_(ss);
-    const stateSheet = ensureStateSheet_(ss);
-    ensureHeader_(sheet);
-    ensureStateHeader_(stateSheet);
-    ensureSheetFormatting_(sheet);
-    ensureTable_(spreadsheetId, sheet);
+    setProgress_(ss, 'Checking managed sheets and columns...');
+    const managedSheets = ensureManagedWorkbookStructure_(ss, spreadsheetId);
+    const sheet = managedSheets.sheet;
+    const stateSheet = managedSheets.stateSheet;
+    const invoicingSheet = managedSheets.invoicingSheet;
+    const invoicingStateSheet = managedSheets.invoicingStateSheet;
+    const nonBillableSheet = managedSheets.nonBillableSheet;
+    const nonBillableStateSheet = managedSheets.nonBillableStateSheet;
+
+    const migratedInvoiceCount = migrateCalendarInvoicesToInvoicing_(
+      sheet,
+      stateSheet,
+      invoicingSheet,
+      invoicingStateSheet
+    );
+    const repairedInvoiceStateCount = repairInvoicingStateFromCalendarRows_(
+      sheet,
+      stateSheet,
+      invoicingSheet,
+      invoicingStateSheet
+    );
+
+    clearRetiredCalendarInvoiceColumns_(sheet);
+
+    setProgress_(ss, 'Performing full import for self-healing reconciliation...');
+    const fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
+    const repairedImportedInvoiceStateCount = repairInvoicingStateFromImportedEvents_(
+      fetchResult.currentByKey,
+      invoicingSheet,
+      invoicingStateSheet
+    );
+    const repairedNonBillableStateCount = repairNonBillableStateFromImportedEvents_(
+      fetchResult.currentByKey,
+      nonBillableSheet,
+      nonBillableStateSheet
+    );
+    const invoiceStore = readInvoicingState_(invoicingSheet, invoicingStateSheet);
+    const nonBillableStore = readNonBillableState_(nonBillableSheet, nonBillableStateSheet);
+    applyRegisterStatusesToImportedEvents_(fetchResult.currentByKey, invoiceStore, nonBillableStore);
 
     setProgress_(ss, 'Reading existing sheet state...');
-    const existingState = readExistingState_(sheet, stateSheet, timeZone, scope);
-    const syncTokens = loadSyncTokens_(calendars);
-
-    let useIncremental =
-      existingState.hasManagedRows &&
-      syncTokens.length === calendars.length &&
-      syncTokens.every((item) => !!item.syncToken);
-
-    let fetchResult;
-    if (useIncremental) {
-      try {
-        setProgress_(ss, 'Fetching incremental changes...');
-        fetchResult = fetchIncrementalChanges_(ss, calendars, timeZone);
-      } catch (error) {
-        clearSyncTokens_(calendars);
-        useIncremental = false;
-        setProgress_(ss, 'Sync token invalid. Falling back to full import...');
-        fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
-      }
-    } else {
-      setProgress_(ss, 'Performing initial full import...');
-      fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
-    }
+    const existingState = readExistingState_(sheet, stateSheet, timeZone, scope, invoiceStore, nonBillableStore);
 
     const changedNotifications = [];
-    let finalRows;
 
     setProgress_(ss, 'Rebuilding worksheet data...');
-    if (useIncremental) {
-      finalRows = rebuildFromIncremental_(
-        existingState,
-        fetchResult.deltaByKey,
-        changedNotifications,
-        timeZone,
-        scope
-      );
-    } else {
-      finalRows = rebuildFromFullSnapshot_(
-        existingState,
-        fetchResult.currentByKey,
-        changedNotifications,
-        timeZone,
-        scope
-      );
-    }
+    let finalRows = rebuildFromFullSnapshot_(
+      existingState,
+      fetchResult.currentByKey,
+      changedNotifications,
+      timeZone,
+      scope
+    );
 
     setProgress_(ss, 'Removing duplicates...');
     finalRows = removeManagedDuplicates_(finalRows, scope);
@@ -142,20 +141,58 @@ function updateCalendarSheets() {
     writeVisibleBody_(sheet, finalRows);
     writeStateBody_(stateSheet, finalRows);
     applyNumberFormats_(sheet);
+    applyNumberFormats_(invoicingSheet, CONFIG.invoicingHeader);
+    applyNumberFormats_(nonBillableSheet, CONFIG.nonBillableHeader);
     applyRowColors_(sheet, finalRows);
     ensureTableRange_(spreadsheetId, sheet);
+    ensureTableRange_(spreadsheetId, invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
+    ensureTableRange_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
 
     saveSyncTokens_(fetchResult.nextSyncTokens);
 
+    const ignoredBeforeImportStartCount = existingState.ignoredBeforeImportStartCount || 0;
+    if (ignoredBeforeImportStartCount > 0) {
+      showToastMessage_(
+        ss,
+        `${ignoredBeforeImportStartCount} row(s) before ${CONFIG.importStartDate} were excluded from this update and left unchanged.`,
+        { severity: 'info' }
+      );
+    }
+
+    if (migratedInvoiceCount > 0) {
+      showToastMessage_(
+        ss,
+        `${migratedInvoiceCount} invoiced row(s) were moved to the Invoicing register.`,
+        { severity: 'info' }
+      );
+    }
+
+    const totalRepairedInvoiceStateCount = repairedInvoiceStateCount + repairedImportedInvoiceStateCount;
+    if (totalRepairedInvoiceStateCount > 0) {
+      showToastMessage_(
+        ss,
+        `${totalRepairedInvoiceStateCount} Invoicing row(s) were linked to calendar events.`,
+        { severity: 'info' }
+      );
+    }
+
+    if (repairedNonBillableStateCount > 0) {
+      showToastMessage_(
+        ss,
+        `${repairedNonBillableStateCount} Non-Billable row(s) were linked to calendar events.`,
+        { severity: 'info' }
+      );
+    }
+
     if (changedNotifications.length > 0) {
-      setProgress_(ss, `Done. ${changedNotifications.length} changed invoiced event(s) detected.`);
+      setProgress_(ss, `Done. ${changedNotifications.length} registered event update(s) acknowledged.`);
       SpreadsheetApp.getUi().alert(
-        'Changed invoiced events detected',
+        'Registered event updates acknowledged',
         buildChangedRowsMessage_(changedNotifications),
         SpreadsheetApp.getUi().ButtonSet.OK
       );
-      showToastMessage_(ss, `${changedNotifications.length} changed invoiced event(s) detected.`, {
-        severity: 'warning',
+      showToastMessage_(ss, `${changedNotifications.length} registered event update(s) acknowledged.`, {
+        severity: 'info',
       });
     } else {
       setProgress_(ss, 'Done.');

@@ -1,44 +1,110 @@
 function ensureCalendarSheet_(ss) {
-  let sheet = ss.getSheetByName(CONFIG.sheetName);
+  return ensureNamedSheet_(ss, CONFIG.sheetName, false);
+}
 
-  if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.sheetName);
-  }
+function ensureInvoicingSheet_(ss) {
+  return ensureNamedSheet_(ss, CONFIG.invoicingSheetName, false);
+}
 
-  return sheet;
+function ensureNonBillableSheet_(ss) {
+  return ensureNamedSheet_(ss, CONFIG.nonBillableSheetName, false);
 }
 
 function ensureStateSheet_(ss) {
-  let sheet = ss.getSheetByName(CONFIG.stateSheetName);
+  return ensureNamedSheet_(ss, CONFIG.stateSheetName, true);
+}
+
+function ensureInvoicingStateSheet_(ss) {
+  return ensureNamedSheet_(ss, CONFIG.invoicingStateSheetName, true);
+}
+
+function ensureNonBillableStateSheet_(ss) {
+  return ensureNamedSheet_(ss, CONFIG.nonBillableStateSheetName, true);
+}
+
+function ensureNamedSheet_(ss, sheetName, hidden) {
+  let sheet = ss.getSheetByName(sheetName);
 
   if (!sheet) {
-    sheet = ss.insertSheet(CONFIG.stateSheetName);
+    sheet = ss.insertSheet(sheetName);
   }
 
-  if (!sheet.isSheetHidden()) {
+  if (hidden && !sheet.isSheetHidden()) {
     sheet.hideSheet();
   }
 
   return sheet;
 }
 
-function ensureHeader_(sheet) {
-  const headerRange = sheet.getRange(1, 1, 1, CONFIG.header.length);
+function ensureHeader_(sheet, header) {
+  const effectiveHeader = header || CONFIG.header;
+  const headerRange = sheet.getRange(1, 1, 1, effectiveHeader.length);
   const current = headerRange.getValues()[0];
 
-  const needsWrite = CONFIG.header.some((value, index) => current[index] !== value);
+  const needsWrite = effectiveHeader.some((value, index) => current[index] !== value);
   if (needsWrite) {
-    headerRange.setValues([CONFIG.header]);
+    headerRange.setValues([effectiveHeader]);
   }
 }
 
 function ensureStateHeader_(sheet) {
-  const headerRange = sheet.getRange(1, 1, 1, CONFIG.stateHeader.length);
-  const current = headerRange.getValues()[0];
+  ensureHeader_(sheet, CONFIG.stateHeader);
+}
 
-  const needsWrite = CONFIG.stateHeader.some((value, index) => current[index] !== value);
-  if (needsWrite) {
-    headerRange.setValues([CONFIG.stateHeader]);
+function ensureInvoicingStateHeader_(sheet) {
+  ensureHeader_(sheet, CONFIG.invoicingStateHeader);
+}
+
+function ensureNonBillableStateHeader_(sheet) {
+  ensureHeader_(sheet, CONFIG.nonBillableStateHeader);
+}
+
+function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
+  const sheet = ensureCalendarSheet_(ss);
+  const stateSheet = ensureStateSheet_(ss);
+  const invoicingSheet = ensureInvoicingSheet_(ss);
+  const invoicingStateSheet = ensureInvoicingStateSheet_(ss);
+  const nonBillableSheet = ensureNonBillableSheet_(ss);
+  const nonBillableStateSheet = ensureNonBillableStateSheet_(ss);
+
+  ensureHeader_(sheet);
+  ensureStateHeader_(stateSheet);
+  ensureHeader_(invoicingSheet, CONFIG.invoicingHeader);
+  ensureInvoicingStateHeader_(invoicingStateSheet);
+  ensureHeader_(nonBillableSheet, CONFIG.nonBillableHeader);
+  ensureNonBillableStateHeader_(nonBillableStateSheet);
+
+  assertSheetHasExpectedColumns_(sheet, CONFIG.header);
+  assertSheetHasExpectedColumns_(stateSheet, CONFIG.stateHeader);
+  assertSheetHasExpectedColumns_(invoicingSheet, CONFIG.invoicingHeader);
+  assertSheetHasExpectedColumns_(invoicingStateSheet, CONFIG.invoicingStateHeader);
+  assertSheetHasExpectedColumns_(nonBillableSheet, CONFIG.nonBillableHeader);
+  assertSheetHasExpectedColumns_(nonBillableStateSheet, CONFIG.nonBillableStateHeader);
+
+  ensureSheetFormatting_(sheet);
+  ensureSheetFormatting_(invoicingSheet);
+  ensureSheetFormatting_(nonBillableSheet);
+  ensureTable_(spreadsheetId, sheet);
+  ensureTable_(spreadsheetId, invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
+  ensureTable_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
+
+  return {
+    sheet,
+    stateSheet,
+    invoicingSheet,
+    invoicingStateSheet,
+    nonBillableSheet,
+    nonBillableStateSheet,
+  };
+}
+
+function assertSheetHasExpectedColumns_(sheet, expectedHeader) {
+  const current = sheet.getRange(1, 1, 1, expectedHeader.length).getValues()[0];
+  const mismatchIndex = expectedHeader.findIndex((value, index) => current[index] !== value);
+  if (mismatchIndex >= 0) {
+    throw new Error(
+      `Sheet "${sheet.getName()}" has invalid column ${mismatchIndex + 1}. Expected "${expectedHeader[mismatchIndex]}", got "${current[mismatchIndex]}".`
+    );
   }
 }
 
@@ -47,7 +113,9 @@ function ensureSheetFormatting_(sheet) {
   sheet.setHiddenGridlines(true);
 }
 
-function ensureTable_(spreadsheetId, sheet) {
+function ensureTable_(spreadsheetId, sheet, tableName, header) {
+  const effectiveTableName = tableName || CONFIG.tableName;
+  const effectiveHeader = header || CONFIG.header;
   const spreadsheetModel = getSpreadsheetModel_(spreadsheetId);
   const sheetModel = (spreadsheetModel.sheets || []).find(
     (entry) => entry.properties && entry.properties.sheetId === sheet.getSheetId()
@@ -61,13 +129,13 @@ function ensureTable_(spreadsheetId, sheet) {
           {
             addTable: {
               table: {
-                name: CONFIG.tableName,
+                name: effectiveTableName,
                 range: {
                   sheetId: sheet.getSheetId(),
                   startRowIndex: 0,
                   endRowIndex: Math.max(sheet.getLastRow(), 1),
                   startColumnIndex: 0,
-                  endColumnIndex: CONFIG.header.length,
+                  endColumnIndex: effectiveHeader.length,
                 },
               },
             },
@@ -79,7 +147,7 @@ function ensureTable_(spreadsheetId, sheet) {
     return;
   }
 
-  const table = tables.find((entry) => entry.name === CONFIG.tableName) || tables[0];
+  const table = tables.find((entry) => entry.name === effectiveTableName) || tables[0];
 
   Sheets.Spreadsheets.batchUpdate(
     {
@@ -88,13 +156,13 @@ function ensureTable_(spreadsheetId, sheet) {
           updateTable: {
             table: {
               tableId: table.tableId,
-              name: CONFIG.tableName,
+              name: effectiveTableName,
               range: {
                 sheetId: sheet.getSheetId(),
                 startRowIndex: 0,
                 endRowIndex: Math.max(sheet.getLastRow(), 1),
                 startColumnIndex: 0,
-                endColumnIndex: CONFIG.header.length,
+                endColumnIndex: effectiveHeader.length,
               },
             },
             fields: 'name,range',
@@ -106,17 +174,19 @@ function ensureTable_(spreadsheetId, sheet) {
   );
 }
 
-function ensureTableRange_(spreadsheetId, sheet) {
+function ensureTableRange_(spreadsheetId, sheet, tableName, header) {
+  const effectiveTableName = tableName || CONFIG.tableName;
+  const effectiveHeader = header || CONFIG.header;
   const spreadsheetModel = getSpreadsheetModel_(spreadsheetId);
   const sheetModel = (spreadsheetModel.sheets || []).find(
     (entry) => entry.properties && entry.properties.sheetId === sheet.getSheetId()
   );
   const table = ((sheetModel && sheetModel.tables) || []).find(
-    (entry) => entry.name === CONFIG.tableName
+    (entry) => entry.name === effectiveTableName
   );
 
   if (!table) {
-    ensureTable_(spreadsheetId, sheet);
+    ensureTable_(spreadsheetId, sheet, effectiveTableName, effectiveHeader);
     return;
   }
 
@@ -128,7 +198,7 @@ function ensureTableRange_(spreadsheetId, sheet) {
     currentRange.startRowIndex === 0 &&
     currentRange.endRowIndex === desiredEndRow &&
     currentRange.startColumnIndex === 0 &&
-    currentRange.endColumnIndex === CONFIG.header.length;
+    currentRange.endColumnIndex === effectiveHeader.length;
 
   if (unchanged) {
     return;
@@ -147,7 +217,7 @@ function ensureTableRange_(spreadsheetId, sheet) {
                 startRowIndex: 0,
                 endRowIndex: desiredEndRow,
                 startColumnIndex: 0,
-                endColumnIndex: CONFIG.header.length,
+                endColumnIndex: effectiveHeader.length,
               },
             },
             fields: 'range',

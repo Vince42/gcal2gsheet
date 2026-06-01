@@ -1,4 +1,4 @@
-function readExistingState_(sheet, stateSheet, timeZone, scope) {
+function readExistingState_(sheet, stateSheet, timeZone, scope, invoiceStore, nonBillableStore) {
   const visibleLastRow = sheet.getLastRow();
   const stateLastRow = stateSheet.getLastRow();
   const visibleRowCount = Math.max(visibleLastRow - 1, 0);
@@ -9,6 +9,7 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
     hasManagedRows: false,
     rowsByEventKey: new Map(),
     ignoredManagedRows: [],
+    ignoredBeforeImportStartCount: 0,
     unmanagedRows: [],
   };
 
@@ -35,7 +36,9 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
 
     const eventKey = toText_(stateRow[0]);
     const rowKind = toText_(stateRow[1]) || CONFIG.rowKind.unmanaged;
-    const invoiceNumber = toText_(rowValues[8]);
+    const invoiceNumber = rowKind === CONFIG.rowKind.changedCopy
+      ? ''
+      : getRegisterStatusMarkerForEventKey_(eventKey, invoiceStore, nonBillableStore);
     const signature = buildSheetRowSignature_(rowValues, timeZone);
 
     if (eventKey) {
@@ -55,6 +58,7 @@ function readExistingState_(sheet, stateSheet, timeZone, scope) {
         }
         result.rowsByEventKey.get(eventKey).push(row);
       } else if (isExistingRowBeforeImportStart_(rowValues, scope)) {
+        result.ignoredBeforeImportStartCount += 1;
         result.ignoredManagedRows.push(row);
       } else {
         // Preserve managed rows that are currently outside active scope (for example,
@@ -132,4 +136,26 @@ function clearSyncTokens_(calendars) {
       );
     }
   });
+}
+
+function getRegisterStatusMarkerForEventKey_(eventKey, invoiceStore, nonBillableStore) {
+  if (!eventKey) {
+    return '';
+  }
+
+  const invoice = invoiceStore && invoiceStore.byEventKey
+    ? invoiceStore.byEventKey.get(eventKey)
+    : null;
+  if (invoice) {
+    return invoice.invoiceNumber || 'INVOICED';
+  }
+
+  const nonBillable = nonBillableStore && nonBillableStore.byEventKey
+    ? nonBillableStore.byEventKey.get(eventKey)
+    : null;
+  if (nonBillable) {
+    return 'NON_BILLABLE';
+  }
+
+  return '';
 }
