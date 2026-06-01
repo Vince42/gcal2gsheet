@@ -18,7 +18,7 @@ rg -n "function onEdit\(e\)" Code.gs >/dev/null
 
 # Static smoke test for structured Log sheet.
 rg -n "function ensureLogSheet_\(" Config.gs >/dev/null
-rg -n "DetailsJson" Config.gs >/dev/null
+rg -n "Timestamp.*Level.*Component.*Event.*Message" Config.gs >/dev/null
 rg -n "setFontFamily\('Courier New'\)" Config.gs >/dev/null
 
 echo "smoke-test: PASS"

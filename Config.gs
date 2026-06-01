@@ -681,11 +681,11 @@ function logStorageDebug_(phase, message) {
   const line = `${new Date().toISOString()} [storage-debug] ${phase}: ${message}`;
   console.log(line);
   Logger.log(line);
-  appendStorageDebugToSheet_(phase, message, line);
+  appendStorageDebugToSheet_(phase, message);
 }
 
 
-function appendStorageDebugToSheet_(phase, message, line) {
+function appendStorageDebugToSheet_(phase, message) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const sheet = ensureLogSheet_(ss);
@@ -697,7 +697,7 @@ function appendStorageDebugToSheet_(phase, message, line) {
       sheet.getRange(startRow + 1, 1, maxLines - 1, 5).moveTo(sheet.getRange(startRow, 1, maxLines - 1, 5));
       nextRow = startRow + maxLines - 1;
     }
-    sheet.getRange(nextRow, 1, 1, 5).setValues([[timestamp, 'DEBUG', phase, String(message), line]]);
+    sheet.getRange(nextRow, 1, 1, 5).setValues([[timestamp, 'DEBUG', 'storage', String(phase), String(message)]]);
   } catch (error) {
     const fallback = `[storage-debug] failed to persist debug line: ${error}`;
     console.log(fallback);
@@ -726,7 +726,7 @@ function ensureLogSheet_(ss) {
   if (!sheet) {
     sheet = ss.insertSheet('Log');
   }
-  const headers = [['Timestamp', 'Level', 'Component', 'Message', 'DetailsJson']];
+  const headers = [['Timestamp', 'Level', 'Component', 'Event', 'Message']];
   const range = sheet.getRange(1, 1, 1, 5);
   range.setValues(headers);
   sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), 5).setFontFamily('Courier New');
