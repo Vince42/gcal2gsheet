@@ -30,8 +30,14 @@ function restoreUiState_(ss, uiState) {
 }
 
 function buildChangedRowsMessage_(items) {
-  const lines = items.slice(0, 25).map((item) => {
-    return `${item.calendar} | ${item.date} ${item.start}-${item.end} | ${item.title}`;
+  const lines = [
+    `${items.length} registered event(s) changed since the last update.`,
+    'Existing register rows were preserved; changed follow-up rows were added for review.',
+    '',
+  ];
+
+  items.slice(0, 25).forEach((item) => {
+    lines.push(`${item.calendar} | ${item.date} ${item.start}-${item.end} | ${item.title}`);
   });
 
   if (items.length > 25) {

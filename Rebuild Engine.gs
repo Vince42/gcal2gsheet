@@ -199,15 +199,11 @@ function compareImportedEvents_(a, b) {
 
 function buildUpdatedRowFromImport_(existingRow, currentEvent) {
   const values = currentEvent.values.slice();
-  values[6] = existingRow.values[6] || '';
-  values[7] = existingRow.values[7] || '';
-  values[8] = existingRow.values[8] || '';
-  values[9] = existingRow.values[9] || '';
 
   return {
     eventKey: currentEvent.eventKey,
     rowKind: CONFIG.rowKind.normal,
-    invoiceNumber: toText_(values[8]),
+    invoiceNumber: currentEvent.invoiceNumber || existingRow.invoiceNumber || '',
     signature: currentEvent.signature,
     values,
   };
@@ -215,15 +211,22 @@ function buildUpdatedRowFromImport_(existingRow, currentEvent) {
 
 function buildNewRowFromImport_(currentEvent, customer, project, invoiceNumber, invoiceDate, rowKind) {
   const values = currentEvent.values.slice();
-  values[6] = customer || '';
-  values[7] = project || '';
-  values[8] = invoiceNumber || '';
-  values[9] = invoiceDate || '';
+  const isChangedCopy = rowKind === CONFIG.rowKind.changedCopy;
+  const rowInvoiceNumber = isChangedCopy ? '' : invoiceNumber || currentEvent.invoiceNumber || '';
+
+  if (values.length > 8) {
+    values[6] = customer || '';
+    values[7] = project || '';
+    values[8] = rowInvoiceNumber;
+    values[9] = invoiceDate || '';
+  } else if (isChangedCopy && values.length > 6) {
+    values[6] = 'Changed';
+  }
 
   return {
     eventKey: currentEvent.eventKey,
     rowKind,
-    invoiceNumber: toText_(values[8]),
+    invoiceNumber: rowInvoiceNumber,
     signature: currentEvent.signature,
     values,
   };

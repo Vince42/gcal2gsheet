@@ -74,7 +74,12 @@ function removeManagedDuplicates_(rows, scope) {
 }
 
 function isRowManagedInScopeForDuplicateCheck_(row, scope) {
-  return !!(row && row.eventKey);
+  return !!(
+    row
+    && row.eventKey
+    && !row.invoiceNumber
+    && isExistingRowInScope_(row.values, scope)
+  );
 }
 
 function buildDuplicateKey_(rowValues) {
