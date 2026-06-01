@@ -15,9 +15,10 @@ function writeVisibleBody_(sheet, rows) {
 
   if (rows.length > 0) {
     const values = rows.map((row, index) => {
-      const rowValues = row.values.slice();
-      if (CONFIG.header[6] === 'Status') {
-        rowValues[6] = buildStatusFormula_(index + 2);
+      const rowValues = [row.eventKey || ''].concat(row.values.slice());
+      const statusIndex = CONFIG.header.indexOf('Status');
+      if (statusIndex >= 0) {
+        rowValues[statusIndex] = buildStatusFormula_(index + 2);
       }
       return rowValues;
     });
@@ -26,29 +27,13 @@ function writeVisibleBody_(sheet, rows) {
 }
 
 function buildStatusFormula_(rowNumber) {
-  return `=IF(COUNTIF('${CONFIG.invoicingStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Invoiced",IF(COUNTIF('${CONFIG.nonBillableStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Non-billable","Open"))`;
+  const invoicingSheetName = escapeSheetNameForFormula_(CONFIG.invoicingSheetName);
+  const nonBillableSheetName = escapeSheetNameForFormula_(CONFIG.nonBillableSheetName);
+  return `=IF(COUNTIF('${invoicingSheetName}'!$A:$A,$A${rowNumber})>0,"Invoiced",IF(COUNTIF('${nonBillableSheetName}'!$A:$A,$A${rowNumber})>0,"Non-billable","Open"))`;
 }
 
-function writeStateBody_(stateSheet, rows) {
-  const oldLastRow = stateSheet.getLastRow();
-  const neededLastRow = Math.max(rows.length + 1, 1);
-
-  if (stateSheet.getMaxRows() < neededLastRow) {
-    stateSheet.insertRowsAfter(stateSheet.getMaxRows(), neededLastRow - stateSheet.getMaxRows());
-  }
-
-  const clearRows = Math.max(oldLastRow, neededLastRow) - 1;
-  if (clearRows > 0) {
-    stateSheet.getRange(2, 1, clearRows, CONFIG.stateHeader.length).clearContent();
-  }
-
-  if (rows.length > 0) {
-    const values = rows.map((row) => [
-      row.eventKey || '',
-      row.rowKind || CONFIG.rowKind.unmanaged,
-    ]);
-    stateSheet.getRange(2, 1, rows.length, CONFIG.stateHeader.length).setValues(values);
-  }
+function escapeSheetNameForFormula_(sheetName) {
+  return String(sheetName || '').replace(/'/g, "''");
 }
 
 function applyNumberFormats_(sheet, header) {

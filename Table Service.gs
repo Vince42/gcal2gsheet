@@ -10,18 +10,6 @@ function ensureNonBillableSheet_(ss) {
   return ensureNamedSheet_(ss, CONFIG.nonBillableSheetName, false);
 }
 
-function ensureStateSheet_(ss) {
-  return ensureNamedSheet_(ss, CONFIG.stateSheetName, true);
-}
-
-function ensureInvoicingStateSheet_(ss) {
-  return ensureNamedSheet_(ss, CONFIG.invoicingStateSheetName, true);
-}
-
-function ensureNonBillableStateSheet_(ss) {
-  return ensureNamedSheet_(ss, CONFIG.nonBillableStateSheetName, true);
-}
-
 function ensureNamedSheet_(ss, sheetName, hidden) {
   let sheet = ss.getSheetByName(sheetName);
 
@@ -68,39 +56,34 @@ function isSheetBlankForManagedHeader_(sheet, currentHeader) {
   return currentHeader.every((value) => toText_(value) === '');
 }
 
-function ensureStateHeader_(sheet) {
-  ensureHeader_(sheet, CONFIG.stateHeader);
-}
-
-function ensureInvoicingStateHeader_(sheet) {
-  ensureHeader_(sheet, CONFIG.invoicingStateHeader);
-}
-
-function ensureNonBillableStateHeader_(sheet) {
-  ensureHeader_(sheet, CONFIG.nonBillableStateHeader);
-}
-
 function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
   const sheet = ensureCalendarSheet_(ss);
-  const stateSheet = ensureStateSheet_(ss);
   const invoicingSheet = ensureInvoicingSheet_(ss);
-  const invoicingStateSheet = ensureInvoicingStateSheet_(ss);
   const nonBillableSheet = ensureNonBillableSheet_(ss);
-  const nonBillableStateSheet = ensureNonBillableStateSheet_(ss);
+  const legacyStateSheet = resolveLegacyStateSheet_(ss, CONFIG.stateSheetName, '_calendar_state');
+  const legacyInvoicingStateSheet = resolveLegacyStateSheet_(ss, CONFIG.invoicingStateSheetName, '_invoicing_state');
+  const legacyNonBillableStateSheet = resolveLegacyStateSheet_(
+    ss,
+    CONFIG.nonBillableStateSheetName,
+    '_non_billable_state'
+  );
+
+  migrateSheetToInlineIds_(sheet, CONFIG.header, LEGACY_CALENDAR_HEADER, legacyStateSheet);
+  migrateSheetToInlineIds_(invoicingSheet, CONFIG.invoicingHeader, LEGACY_INVOICING_HEADER, legacyInvoicingStateSheet);
+  migrateSheetToInlineIds_(
+    nonBillableSheet,
+    CONFIG.nonBillableHeader,
+    LEGACY_NON_BILLABLE_HEADER,
+    legacyNonBillableStateSheet
+  );
 
   ensureHeader_(sheet);
-  ensureStateHeader_(stateSheet);
   ensureHeader_(invoicingSheet, CONFIG.invoicingHeader, { allowOverwrite: false });
-  ensureInvoicingStateHeader_(invoicingStateSheet);
   ensureHeader_(nonBillableSheet, CONFIG.nonBillableHeader, { allowOverwrite: false });
-  ensureNonBillableStateHeader_(nonBillableStateSheet);
 
   assertSheetHasExpectedColumns_(sheet, CONFIG.header);
-  assertSheetHasExpectedColumns_(stateSheet, CONFIG.stateHeader);
   assertSheetHasExpectedColumns_(invoicingSheet, CONFIG.invoicingHeader);
-  assertSheetHasExpectedColumns_(invoicingStateSheet, CONFIG.invoicingStateHeader);
   assertSheetHasExpectedColumns_(nonBillableSheet, CONFIG.nonBillableHeader);
-  assertSheetHasExpectedColumns_(nonBillableStateSheet, CONFIG.nonBillableStateHeader);
 
   ensureSheetFormatting_(sheet);
   ensureSheetFormatting_(invoicingSheet);
@@ -108,15 +91,83 @@ function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
   ensureTable_(spreadsheetId, sheet);
   ensureTable_(spreadsheetId, invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
   ensureTable_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
+  deleteLegacyStateSheets_(
+    ss,
+    collectLegacyStateSheets_(ss, [
+      CONFIG.stateSheetName,
+      CONFIG.invoicingStateSheetName,
+      CONFIG.nonBillableStateSheetName,
+      '_calendar_state',
+      '_invoicing_state',
+      '_non_billable_state',
+    ])
+  );
 
   return {
     sheet,
-    stateSheet,
     invoicingSheet,
-    invoicingStateSheet,
     nonBillableSheet,
-    nonBillableStateSheet,
   };
+}
+
+
+function resolveLegacyStateSheet_(ss, configuredName, defaultName) {
+  return ss.getSheetByName(configuredName) || ss.getSheetByName(defaultName);
+}
+
+function collectLegacyStateSheets_(ss, sheetNames) {
+  const seenSheetIds = new Set();
+  const sheets = [];
+  (sheetNames || []).forEach((sheetName) => {
+    const sheet = ss.getSheetByName(sheetName);
+    if (!sheet || seenSheetIds.has(sheet.getSheetId())) {
+      return;
+    }
+    seenSheetIds.add(sheet.getSheetId());
+    sheets.push(sheet);
+  });
+  return sheets;
+}
+
+function migrateSheetToInlineIds_(sheet, targetHeader, legacyHeader, legacyStateSheet) {
+  const currentFirstHeader = toText_(sheet.getRange(1, 1).getValue());
+  if (currentFirstHeader === targetHeader[0]) {
+    return;
+  }
+  if (currentFirstHeader && currentFirstHeader !== legacyHeader[0]) {
+    return;
+  }
+
+  const rowCount = Math.max(sheet.getLastRow() - 1, 0);
+  sheet.getRange(1, 1, 1, targetHeader.length).setValues([targetHeader]);
+  if (rowCount === 0) {
+    return;
+  }
+
+  const readWidth = targetHeader[0] === 'ID'
+    ? Math.max(legacyHeader.length, LEGACY_INVOICING_HEADER.length + 1)
+    : legacyHeader.length;
+  const legacyValues = sheet.getRange(2, 1, rowCount, readWidth).getValues();
+  const legacyStateRowCount = legacyStateSheet ? Math.max(legacyStateSheet.getLastRow() - 1, 0) : 0;
+  const legacyStateValues = legacyStateRowCount > 0
+    ? legacyStateSheet.getRange(2, 1, legacyStateRowCount, 1).getValues()
+    : [];
+  const migratedValues = legacyValues.map((row, index) => {
+    const legacyId = index < legacyStateValues.length ? toText_(legacyStateValues[index][0]) : '';
+    return [legacyId].concat(row);
+  });
+
+  const writeWidth = Math.max(targetHeader.length, migratedValues[0].length);
+  sheet.getRange(2, 1, migratedValues.length, writeWidth).setValues(migratedValues);
+}
+
+function deleteLegacyStateSheets_(ss, stateSheets) {
+  stateSheets.forEach((sheet) => {
+    if (!sheet || ss.getSheets().length <= 1) {
+      return;
+    }
+    ss.deleteSheet(sheet);
+  });
 }
 
 function assertSheetHasExpectedColumns_(sheet, expectedHeader) {
@@ -132,11 +183,26 @@ function assertSheetHasExpectedColumns_(sheet, expectedHeader) {
 function ensureSheetFormatting_(sheet) {
   sheet.setFrozenRows(1);
   sheet.setHiddenGridlines(true);
+  ensureManagedIdColumnHidden_(sheet);
+}
+
+function ensureManagedIdColumnHidden_(sheet) {
+  sheet.hideColumns(1);
+}
+
+
+function assertManagedTableHasInlineIdColumn_(header) {
+  const firstColumn = header && header.length > 0 ? header[0] : '';
+  if (firstColumn !== 'ID' && firstColumn !== 'EventID') {
+    throw new Error(`Managed table header must start with hidden ID/EventID column. Got "${firstColumn}".`);
+  }
 }
 
 function ensureTable_(spreadsheetId, sheet, tableName, header) {
   const effectiveTableName = tableName || CONFIG.tableName;
   const effectiveHeader = header || CONFIG.header;
+  assertManagedTableHasInlineIdColumn_(effectiveHeader);
+  ensureManagedIdColumnHidden_(sheet);
   const spreadsheetModel = getSpreadsheetModel_(spreadsheetId);
   const sheetModel = (spreadsheetModel.sheets || []).find(
     (entry) => entry.properties && entry.properties.sheetId === sheet.getSheetId()
@@ -198,6 +264,8 @@ function ensureTable_(spreadsheetId, sheet, tableName, header) {
 function ensureTableRange_(spreadsheetId, sheet, tableName, header) {
   const effectiveTableName = tableName || CONFIG.tableName;
   const effectiveHeader = header || CONFIG.header;
+  assertManagedTableHasInlineIdColumn_(effectiveHeader);
+  ensureManagedIdColumnHidden_(sheet);
   const spreadsheetModel = getSpreadsheetModel_(spreadsheetId);
   const sheetModel = (spreadsheetModel.sheets || []).find(
     (entry) => entry.properties && entry.properties.sheetId === sheet.getSheetId()

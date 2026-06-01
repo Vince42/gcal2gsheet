@@ -111,24 +111,11 @@ function updateCalendarSheets() {
     setProgress_(ss, 'Checking managed sheets and columns...');
     const managedSheets = ensureManagedWorkbookStructure_(ss, spreadsheetId);
     const sheet = managedSheets.sheet;
-    const stateSheet = managedSheets.stateSheet;
     const invoicingSheet = managedSheets.invoicingSheet;
-    const invoicingStateSheet = managedSheets.invoicingStateSheet;
     const nonBillableSheet = managedSheets.nonBillableSheet;
-    const nonBillableStateSheet = managedSheets.nonBillableStateSheet;
 
-    const migratedInvoiceCount = migrateCalendarInvoicesToInvoicing_(
-      sheet,
-      stateSheet,
-      invoicingSheet,
-      invoicingStateSheet
-    );
-    const repairedInvoiceStateCount = repairInvoicingStateFromCalendarRows_(
-      sheet,
-      stateSheet,
-      invoicingSheet,
-      invoicingStateSheet
-    );
+    const migratedInvoiceCount = migrateCalendarInvoicesToInvoicing_(sheet, invoicingSheet);
+    const repairedInvoiceStateCount = repairInvoicingStateFromCalendarRows_(sheet, invoicingSheet);
 
     clearRetiredCalendarInvoiceColumns_(sheet);
 
@@ -136,20 +123,18 @@ function updateCalendarSheets() {
     const fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
     const repairedImportedInvoiceStateCount = repairInvoicingStateFromImportedEvents_(
       fetchResult.currentByKey,
-      invoicingSheet,
-      invoicingStateSheet
+      invoicingSheet
     );
     const repairedNonBillableStateCount = repairNonBillableStateFromImportedEvents_(
       fetchResult.currentByKey,
-      nonBillableSheet,
-      nonBillableStateSheet
+      nonBillableSheet
     );
-    const invoiceStore = readInvoicingState_(invoicingSheet, invoicingStateSheet);
-    const nonBillableStore = readNonBillableState_(nonBillableSheet, nonBillableStateSheet);
+    const invoiceStore = readInvoicingState_(invoicingSheet);
+    const nonBillableStore = readNonBillableState_(nonBillableSheet);
     applyRegisterStatusesToImportedEvents_(fetchResult.currentByKey, invoiceStore, nonBillableStore);
 
     setProgress_(ss, 'Reading existing sheet state...');
-    const existingState = readExistingState_(sheet, stateSheet, timeZone, scope, invoiceStore, nonBillableStore);
+    const existingState = readExistingState_(sheet, timeZone, scope, invoiceStore, nonBillableStore);
 
     setProgress_(ss, 'Rebuilding worksheet data...');
     let finalRows = rebuildFromFullSnapshot_(
@@ -163,7 +148,6 @@ function updateCalendarSheets() {
 
     setProgress_(ss, `Writing ${finalRows.length} row(s)...`);
     writeVisibleBody_(sheet, finalRows);
-    writeStateBody_(stateSheet, finalRows);
     applyNumberFormats_(sheet);
     applyNumberFormats_(invoicingSheet, CONFIG.invoicingHeader);
     applyNumberFormats_(nonBillableSheet, CONFIG.nonBillableHeader);

@@ -1,4 +1,4 @@
-const DEFAULT_HEADER = Object.freeze([
+const LEGACY_CALENDAR_HEADER = Object.freeze([
   'Calendar',
   'Event',
   'Date',
@@ -8,7 +8,7 @@ const DEFAULT_HEADER = Object.freeze([
   'Status',
 ]);
 
-const DEFAULT_INVOICING_HEADER = Object.freeze([
+const LEGACY_INVOICING_HEADER = Object.freeze([
   'Calendar',
   'Event',
   'Date',
@@ -21,7 +21,7 @@ const DEFAULT_INVOICING_HEADER = Object.freeze([
   'InvoiceDate',
 ]);
 
-const DEFAULT_NON_BILLABLE_HEADER = Object.freeze([
+const LEGACY_NON_BILLABLE_HEADER = Object.freeze([
   'Calendar',
   'Event',
   'Date',
@@ -30,6 +30,12 @@ const DEFAULT_NON_BILLABLE_HEADER = Object.freeze([
   'Duration',
   'Reason',
 ]);
+
+const DEFAULT_HEADER = Object.freeze(['ID'].concat(LEGACY_CALENDAR_HEADER));
+
+const DEFAULT_INVOICING_HEADER = Object.freeze(['EventID'].concat(LEGACY_INVOICING_HEADER));
+
+const DEFAULT_NON_BILLABLE_HEADER = Object.freeze(['EventID'].concat(LEGACY_NON_BILLABLE_HEADER));
 
 const DEFAULT_CONFIG = Object.freeze({
   sheetName: 'Calendar',
@@ -465,10 +471,22 @@ function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
     Array.isArray(normalized.header)
     && (
       arraysEqual_(normalized.header, DEFAULT_INVOICING_HEADER)
+      || arraysEqual_(normalized.header, LEGACY_CALENDAR_HEADER)
       || arraysEqual_(normalized.header, previousStatusHeader)
     )
   ) {
     delete normalized.header;
+  }
+
+  if (Array.isArray(normalized.invoicingHeader) && arraysEqual_(normalized.invoicingHeader, LEGACY_INVOICING_HEADER)) {
+    delete normalized.invoicingHeader;
+  }
+
+  if (
+    Array.isArray(normalized.nonBillableHeader)
+    && arraysEqual_(normalized.nonBillableHeader, LEGACY_NON_BILLABLE_HEADER)
+  ) {
+    delete normalized.nonBillableHeader;
   }
 
   if (normalized.nonBillableTableName === 'Non-Billable') {
