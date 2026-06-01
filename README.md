@@ -380,9 +380,11 @@ The visible managed worksheets contain native Google Sheets table objects:
 
 - `Calendar` table on the `Calendar` sheet
 - `Invoicing` table on the `Invoicing` sheet
-- `Non-Billable` table on the `Non-Billable` sheet
+- `NonBillable` table on the `Non-Billable` sheet
 
-The script keeps both table ranges aligned with their current data bodies through the Sheets API.
+The script keeps all managed table ranges aligned with their current data bodies through the Sheets API.
+
+The table names are formula-compatible identifiers; for example, the `Non-Billable` sheet uses the `NonBillable` table name because Google Sheets table names cannot contain hyphens.
 
 The tables themselves are not used as hidden business logic stores.
 They are treated as workbook UI structures that must remain present and consistent.

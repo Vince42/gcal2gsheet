@@ -27,6 +27,8 @@ rg -n "defaultCalendarName: 'Calendar'" Config.gs >/dev/null
 rg -n "invoicingSheetName: 'Invoicing'" Config.gs >/dev/null
 rg -n "'Status'" Config.gs >/dev/null
 rg -n "nonBillableSheetName: 'Non-Billable'" Config.gs >/dev/null
+rg -n "nonBillableTableName: 'NonBillable'" Config.gs >/dev/null
+rg -n "function assertValidTableName_" Config.gs >/dev/null
 rg -n "ensureManagedWorkbookStructure_" "Table Service.gs" >/dev/null
 rg -n "assertSheetHasExpectedColumns_" "Table Service.gs" >/dev/null
 rg -n "ensureNonBillableSheet_" "Table Service.gs" >/dev/null

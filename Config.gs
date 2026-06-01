@@ -40,7 +40,7 @@ const DEFAULT_CONFIG = Object.freeze({
   invoicingTableName: 'Invoicing',
   nonBillableSheetName: 'Non-Billable',
   nonBillableStateSheetName: '_non_billable_state',
-  nonBillableTableName: 'Non-Billable',
+  nonBillableTableName: 'NonBillable',
   statusCell: buildDefaultStatusCell_(DEFAULT_HEADER),
 
   // Lower bound for managed imports: yyyy-mm-dd
@@ -471,6 +471,10 @@ function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
     delete normalized.header;
   }
 
+  if (normalized.nonBillableTableName === 'Non-Billable') {
+    normalized.nonBillableTableName = DEFAULT_CONFIG.nonBillableTableName;
+  }
+
   return normalized;
 }
 
@@ -550,12 +554,15 @@ function validateConfig_(config) {
   assertString_(config.sheetName, 'sheetName');
   assertString_(config.stateSheetName, 'stateSheetName');
   assertString_(config.tableName, 'tableName');
+  assertValidTableName_(config.tableName, 'tableName');
   assertString_(config.invoicingSheetName, 'invoicingSheetName');
   assertString_(config.invoicingStateSheetName, 'invoicingStateSheetName');
   assertString_(config.invoicingTableName, 'invoicingTableName');
+  assertValidTableName_(config.invoicingTableName, 'invoicingTableName');
   assertString_(config.nonBillableSheetName, 'nonBillableSheetName');
   assertString_(config.nonBillableStateSheetName, 'nonBillableStateSheetName');
   assertString_(config.nonBillableTableName, 'nonBillableTableName');
+  assertValidTableName_(config.nonBillableTableName, 'nonBillableTableName');
   assertString_(config.statusCell, 'StatusCell');
   assertA1CellReference_(config.statusCell, 'StatusCell');
   assertString_(config.importStartDate, 'importStartDate');
@@ -651,6 +658,18 @@ function validateConfig_(config) {
 function assertString_(value, fieldName) {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new Error(`Invalid ${fieldName}.`);
+  }
+}
+
+function assertValidTableName_(value, fieldName) {
+  const normalized = String(value || '').trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(normalized)) {
+    throw new Error(
+      `${fieldName} must be a Google Sheets table-compatible name using only letters, numbers, and underscores, and it must not start with a number.`
+    );
+  }
+  if (/^[A-Za-z]+[1-9][0-9]*$/.test(normalized)) {
+    throw new Error(`${fieldName} must not look like a cell reference.`);
   }
 }
 
