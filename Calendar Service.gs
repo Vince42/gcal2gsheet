@@ -207,6 +207,7 @@ function convertApiEvent_(calendarInfo, item, timeZone) {
     end,
     duration,
     signature,
+    invoiceNumber: '',
     values: [
       calendarInfo.name,
       item.summary || '',
@@ -214,10 +215,7 @@ function convertApiEvent_(calendarInfo, item, timeZone) {
       start,
       end,
       duration,
-      '',
-      '',
-      '',
-      '',
+      'Open',
     ],
   };
 }

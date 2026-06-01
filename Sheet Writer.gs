@@ -14,9 +14,19 @@ function writeVisibleBody_(sheet, rows) {
   }
 
   if (rows.length > 0) {
-    const values = rows.map((row) => row.values);
+    const values = rows.map((row, index) => {
+      const rowValues = row.values.slice();
+      if (CONFIG.header[6] === 'Status') {
+        rowValues[6] = buildStatusFormula_(index + 2);
+      }
+      return rowValues;
+    });
     sheet.getRange(2, 1, rows.length, CONFIG.header.length).setValues(values);
   }
+}
+
+function buildStatusFormula_(rowNumber) {
+  return `=IF('${CONFIG.stateSheetName}'!$B${rowNumber}="${CONFIG.rowKind.changedCopy}","Changed",IF(COUNTIF('${CONFIG.invoicingStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Invoiced",IF(COUNTIF('${CONFIG.nonBillableStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Non-billable","Open")))`;
 }
 
 function writeStateBody_(stateSheet, rows) {
@@ -41,7 +51,8 @@ function writeStateBody_(stateSheet, rows) {
   }
 }
 
-function applyNumberFormats_(sheet) {
+function applyNumberFormats_(sheet, header) {
+  const effectiveHeader = header || CONFIG.header;
   const lastRow = sheet.getLastRow();
   const rowCount = Math.max(lastRow - 1, 0);
 
@@ -49,11 +60,20 @@ function applyNumberFormats_(sheet) {
     return;
   }
 
-  sheet.getRange(2, 3, rowCount, 1).setNumberFormat('yyyy-mm-dd');
-  sheet.getRange(2, 4, rowCount, 1).setNumberFormat('hh:mm');
-  sheet.getRange(2, 5, rowCount, 1).setNumberFormat('hh:mm');
-  sheet.getRange(2, 6, rowCount, 1).setNumberFormat('hh:mm');
-  sheet.getRange(2, 10, rowCount, 1).setNumberFormat('yyyy-mm-dd');
+  applyColumnNumberFormatByName_(sheet, effectiveHeader, 'Date', rowCount, 'yyyy-mm-dd');
+  applyColumnNumberFormatByName_(sheet, effectiveHeader, 'Start', rowCount, 'hh:mm');
+  applyColumnNumberFormatByName_(sheet, effectiveHeader, 'End', rowCount, 'hh:mm');
+  applyColumnNumberFormatByName_(sheet, effectiveHeader, 'Duration', rowCount, 'hh:mm');
+  applyColumnNumberFormatByName_(sheet, effectiveHeader, 'InvoiceDate', rowCount, 'yyyy-mm-dd');
+}
+
+function applyColumnNumberFormatByName_(sheet, header, columnName, rowCount, numberFormat) {
+  const index = header.indexOf(columnName);
+  if (index < 0) {
+    return;
+  }
+
+  sheet.getRange(2, index + 1, rowCount, 1).setNumberFormat(numberFormat);
 }
 
 function applyRowColors_(sheet, rows) {
@@ -61,17 +81,17 @@ function applyRowColors_(sheet, rows) {
     return;
   }
 
-  const colors = rows.map((row) => {
-    let color = CONFIG.colors.normal;
-
-    if (row.invoiceNumber) {
-      color = CONFIG.colors.invoiced;
-    } else if (row.rowKind === CONFIG.rowKind.changedCopy) {
-      color = CONFIG.colors.changed;
-    }
-
-    return new Array(CONFIG.header.length).fill(color);
-  });
-
+  const colors = rows.map(() => new Array(CONFIG.header.length).fill(CONFIG.colors.normal));
   sheet.getRange(2, 1, rows.length, CONFIG.header.length).setFontColors(colors);
+}
+
+function clearRetiredCalendarInvoiceColumns_(sheet) {
+  const firstRetiredColumn = CONFIG.header.length + 1;
+  const retiredColumnCount = Math.max(CONFIG.invoicingHeader.length - CONFIG.header.length, 0);
+  if (retiredColumnCount === 0) {
+    return;
+  }
+
+  const rowCount = Math.max(sheet.getLastRow(), 1);
+  sheet.getRange(1, firstRetiredColumn, rowCount, retiredColumnCount).clearContent();
 }
