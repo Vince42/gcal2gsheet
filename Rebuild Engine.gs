@@ -199,11 +199,17 @@ function compareImportedEvents_(a, b) {
 
 function buildUpdatedRowFromImport_(existingRow, currentEvent) {
   const values = currentEvent.values.slice();
+  const rowKind = existingRow.rowKind === CONFIG.rowKind.changedCopy
+    ? CONFIG.rowKind.changedCopy
+    : CONFIG.rowKind.normal;
+  const invoiceNumber = rowKind === CONFIG.rowKind.changedCopy
+    ? ''
+    : currentEvent.invoiceNumber || existingRow.invoiceNumber || '';
 
   return {
     eventKey: currentEvent.eventKey,
-    rowKind: CONFIG.rowKind.normal,
-    invoiceNumber: currentEvent.invoiceNumber || existingRow.invoiceNumber || '',
+    rowKind,
+    invoiceNumber,
     signature: currentEvent.signature,
     values,
   };

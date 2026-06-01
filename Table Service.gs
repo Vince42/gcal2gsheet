@@ -36,15 +36,36 @@ function ensureNamedSheet_(ss, sheetName, hidden) {
   return sheet;
 }
 
-function ensureHeader_(sheet, header) {
+function ensureHeader_(sheet, header, options) {
   const effectiveHeader = header || CONFIG.header;
   const headerRange = sheet.getRange(1, 1, 1, effectiveHeader.length);
   const current = headerRange.getValues()[0];
 
   const needsWrite = effectiveHeader.some((value, index) => current[index] !== value);
-  if (needsWrite) {
-    headerRange.setValues([effectiveHeader]);
+  if (!needsWrite) {
+    return;
   }
+
+  const allowOverwrite = !options || options.allowOverwrite !== false;
+  if (!allowOverwrite && !isSheetBlankForManagedHeader_(sheet, current)) {
+    throw new Error(
+      `Sheet "${sheet.getName()}" already exists and does not have the expected managed header. Rename that sheet or configure a different managed sheet name before running the import.`
+    );
+  }
+
+  headerRange.setValues([effectiveHeader]);
+}
+
+function isSheetBlankForManagedHeader_(sheet, currentHeader) {
+  if (sheet.getLastRow() === 0) {
+    return true;
+  }
+
+  if (sheet.getLastRow() > 1) {
+    return false;
+  }
+
+  return currentHeader.every((value) => toText_(value) === '');
 }
 
 function ensureStateHeader_(sheet) {
@@ -69,9 +90,9 @@ function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
 
   ensureHeader_(sheet);
   ensureStateHeader_(stateSheet);
-  ensureHeader_(invoicingSheet, CONFIG.invoicingHeader);
+  ensureHeader_(invoicingSheet, CONFIG.invoicingHeader, { allowOverwrite: false });
   ensureInvoicingStateHeader_(invoicingStateSheet);
-  ensureHeader_(nonBillableSheet, CONFIG.nonBillableHeader);
+  ensureHeader_(nonBillableSheet, CONFIG.nonBillableHeader, { allowOverwrite: false });
   ensureNonBillableStateHeader_(nonBillableStateSheet);
 
   assertSheetHasExpectedColumns_(sheet, CONFIG.header);

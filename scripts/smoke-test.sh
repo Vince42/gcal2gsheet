@@ -31,6 +31,8 @@ rg -n "nonBillableTableName: 'NonBillable'" Config.gs >/dev/null
 rg -n "function assertValidTableName_" Config.gs >/dev/null
 rg -n "ensureManagedWorkbookStructure_" "Table Service.gs" >/dev/null
 rg -n "assertSheetHasExpectedColumns_" "Table Service.gs" >/dev/null
+rg -n "isSheetBlankForManagedHeader_" "Table Service.gs" >/dev/null
+rg -n "allowOverwrite: false" "Table Service.gs" >/dev/null
 rg -n "ensureNonBillableSheet_" "Table Service.gs" >/dev/null
 rg -n "migrateCalendarInvoicesToInvoicing_" "Invoicing Store.gs" >/dev/null
 rg -n "repairInvoicingStateFromImportedEvents_" "Invoicing Store.gs" >/dev/null
@@ -38,6 +40,7 @@ rg -n "readNonBillableState_" "Non Billable Store.gs" >/dev/null
 rg -n "applyRegisterStatusesToImportedEvents_" "Non Billable Store.gs" >/dev/null
 rg -n "buildStatusFormula_" "Sheet Writer.gs" >/dev/null
 rg -n "rowKind\.changedCopy.*Changed.*COUNTIF" "Sheet Writer.gs" >/dev/null
+rg -n "rowKind === CONFIG\.rowKind\.changedCopy" "Rebuild Engine.gs" >/dev/null
 rg -n "Filter for" Code.gs >/dev/null
 rg -n "Mark as" Code.gs >/dev/null
 rg -n "markVisibleCalendarRowsAsInvoiced" "Status Actions.gs" >/dev/null
