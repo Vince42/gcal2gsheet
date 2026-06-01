@@ -55,7 +55,7 @@ It contains exactly these columns in this order:
 6. `Duration`
 7. `Status`
 
-`Status` is derived from event identity stored in hidden state and the durable register sheets. The normal states are:
+`Status` is a formula derived from event identity stored in hidden state and the durable register sheets. The normal states are:
 
 - `Open` — no matching register row exists yet
 - `Invoiced` — the event is listed in `Invoicing`
@@ -363,14 +363,7 @@ Formats:
 
 ### Row colors
 
-Row colors communicate the invoicing state after each update:
-
-- normal, `Open` `Calendar` rows → black font
-- `Calendar` rows whose `EventKey` exists in the `Invoicing` register → dark red font
-- `Calendar` rows whose `EventKey` exists in the `Non-Billable` register → gray font
-- changed follow-up rows that are not yet in a register → dark green font
-
-Color precedence is intentional: register states (`Invoiced`, `Non-billable`) take precedence over review state.
+Rows are no longer color-encoded by status. The `Status` column is the source of truth, and update runs reset the managed `Calendar` rows to the normal font color.
 
 ---
 
@@ -388,6 +381,19 @@ The table names are formula-compatible identifiers; for example, the `Non-Billab
 
 The tables themselves are not used as hidden business logic stores.
 They are treated as workbook UI structures that must remain present and consistent.
+
+---
+
+## Menu actions
+
+The custom menu contains:
+
+- `Filter for` → `Open`, `Invoiced`, `Non-Billable`
+- `Mark as` → `Invoiced`, `Non-Billable`
+
+`Filter for` applies a `Status` filter on the `Calendar` sheet and leaves any existing date/start filter criteria in place. If the native table filter cannot be controlled directly, the script falls back to hiding non-matching rows while keeping date-filtered rows hidden.
+
+`Mark as` reads the currently displayed `Calendar` rows and appends them to the selected durable register. After the register state is written, the `Status` formula changes those rows to the corresponding status.
 
 ---
 

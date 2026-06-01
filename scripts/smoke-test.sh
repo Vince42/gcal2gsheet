@@ -36,6 +36,10 @@ rg -n "migrateCalendarInvoicesToInvoicing_" "Invoicing Store.gs" >/dev/null
 rg -n "repairInvoicingStateFromImportedEvents_" "Invoicing Store.gs" >/dev/null
 rg -n "readNonBillableState_" "Non Billable Store.gs" >/dev/null
 rg -n "applyRegisterStatusesToImportedEvents_" "Non Billable Store.gs" >/dev/null
+rg -n "buildStatusFormula_" "Sheet Writer.gs" >/dev/null
+rg -n "Filter for" Code.gs >/dev/null
+rg -n "Mark as" Code.gs >/dev/null
+rg -n "markVisibleCalendarRowsAsInvoiced" "Status Actions.gs" >/dev/null
 rg -n "Performing full import for self-healing reconciliation" Code.gs >/dev/null
 if rg -n "fetchIncrementalChanges_\(ss, calendars, timeZone\)" Code.gs >/dev/null; then
   echo "smoke-test: FAIL: updateCalendarSheets should not use incremental fetches."

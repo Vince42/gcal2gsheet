@@ -115,3 +115,26 @@ function buildEventRecordMatchKey_(rowValues) {
     end: duplicateDateToken_(rowValues[4]),
   });
 }
+
+function appendNonBillableRows_(nonBillableSheet, nonBillableStateSheet, values, stateValues) {
+  if (!values || values.length === 0) {
+    return;
+  }
+
+  const startRow = Math.max(nonBillableSheet.getLastRow() + 1, 2);
+  const neededLastRow = startRow + values.length - 1;
+  if (nonBillableSheet.getMaxRows() < neededLastRow) {
+    nonBillableSheet.insertRowsAfter(nonBillableSheet.getMaxRows(), neededLastRow - nonBillableSheet.getMaxRows());
+  }
+  if (nonBillableStateSheet.getMaxRows() < neededLastRow) {
+    nonBillableStateSheet.insertRowsAfter(
+      nonBillableStateSheet.getMaxRows(),
+      neededLastRow - nonBillableStateSheet.getMaxRows()
+    );
+  }
+
+  nonBillableSheet.getRange(startRow, 1, values.length, CONFIG.nonBillableHeader.length).setValues(values);
+  nonBillableStateSheet
+    .getRange(startRow, 1, stateValues.length, CONFIG.nonBillableStateHeader.length)
+    .setValues(stateValues);
+}

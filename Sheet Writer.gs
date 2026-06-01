@@ -14,9 +14,19 @@ function writeVisibleBody_(sheet, rows) {
   }
 
   if (rows.length > 0) {
-    const values = rows.map((row) => row.values);
+    const values = rows.map((row, index) => {
+      const rowValues = row.values.slice();
+      if (CONFIG.header[6] === 'Status') {
+        rowValues[6] = buildStatusFormula_(index + 2);
+      }
+      return rowValues;
+    });
     sheet.getRange(2, 1, rows.length, CONFIG.header.length).setValues(values);
   }
+}
+
+function buildStatusFormula_(rowNumber) {
+  return `=IF(COUNTIF('${CONFIG.invoicingStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Invoiced",IF(COUNTIF('${CONFIG.nonBillableStateSheetName}'!$A:$A,'${CONFIG.stateSheetName}'!$A${rowNumber})>0,"Non-billable",IF('${CONFIG.stateSheetName}'!$B${rowNumber}="${CONFIG.rowKind.changedCopy}","Changed","Open")))`;
 }
 
 function writeStateBody_(stateSheet, rows) {
@@ -71,22 +81,19 @@ function applyRowColors_(sheet, rows) {
     return;
   }
 
-  const colors = rows.map((row) => {
-    let color = CONFIG.colors.normal;
-
-    const status = toText_(row.values[6]);
-    if (status === 'Non-billable') {
-      color = CONFIG.colors.nonBillable;
-    } else if (row.invoiceNumber) {
-      color = CONFIG.colors.invoiced;
-    } else if (row.rowKind === CONFIG.rowKind.changedCopy) {
-      color = CONFIG.colors.changed;
-    }
-
-    return new Array(CONFIG.header.length).fill(color);
-  });
-
+  const colors = rows.map(() => new Array(CONFIG.header.length).fill(CONFIG.colors.normal));
   sheet.getRange(2, 1, rows.length, CONFIG.header.length).setFontColors(colors);
+}
+
+function clearRetiredCalendarInvoiceColumns_(sheet) {
+  const firstRetiredColumn = CONFIG.header.length + 1;
+  const retiredColumnCount = Math.max(CONFIG.invoicingHeader.length - CONFIG.header.length, 0);
+  if (retiredColumnCount === 0) {
+    return;
+  }
+
+  const rowCount = Math.max(sheet.getLastRow(), 1);
+  sheet.getRange(1, firstRetiredColumn, rowCount, retiredColumnCount).clearContent();
 }
 
 function clearRetiredCalendarInvoiceColumns_(sheet) {

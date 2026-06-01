@@ -56,10 +56,38 @@ function ensureMenuVisible_(ui) {
         ? CONFIG.menu.item
         : fallbackItem;
 
-    ui.createMenu(menuTitle).addItem(menuItem, fallbackFunction).addToUi();
+    ui.createMenu(menuTitle)
+      .addItem(menuItem, fallbackFunction)
+      .addSeparator()
+      .addSubMenu(
+        ui.createMenu('Filter for')
+          .addItem('Open', 'filterCalendarForOpen')
+          .addItem('Invoiced', 'filterCalendarForInvoiced')
+          .addItem('Non-Billable', 'filterCalendarForNonBillable')
+      )
+      .addSubMenu(
+        ui.createMenu('Mark as')
+          .addItem('Invoiced', 'markVisibleCalendarRowsAsInvoiced')
+          .addItem('Non-Billable', 'markVisibleCalendarRowsAsNonBillable')
+      )
+      .addToUi();
   } catch (error) {
     // Quality gate: never fail menu rendering because of config issues.
-    ui.createMenu(fallbackTitle).addItem(fallbackItem, fallbackFunction).addToUi();
+    ui.createMenu(fallbackTitle)
+      .addItem(fallbackItem, fallbackFunction)
+      .addSeparator()
+      .addSubMenu(
+        ui.createMenu('Filter for')
+          .addItem('Open', 'filterCalendarForOpen')
+          .addItem('Invoiced', 'filterCalendarForInvoiced')
+          .addItem('Non-Billable', 'filterCalendarForNonBillable')
+      )
+      .addSubMenu(
+        ui.createMenu('Mark as')
+          .addItem('Invoiced', 'markVisibleCalendarRowsAsInvoiced')
+          .addItem('Non-Billable', 'markVisibleCalendarRowsAsNonBillable')
+      )
+      .addToUi();
     logStorageDebug_('menu.fallback', String(error));
   }
 }
