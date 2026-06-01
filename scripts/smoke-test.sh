@@ -6,7 +6,10 @@ rg -n "function readConfigStateFromSheet_\(" Config.gs >/dev/null
 rg -n "SchemaRegistryJson" Config.gs >/dev/null
 rg -n "validateSchemaRegistry_" Config.gs >/dev/null
 rg -n "validateConfigStrictWithSchema_" Config.gs >/dev/null
+rg -n "normalizeManagedHeaderConfigKeys_" Config.gs >/dev/null
+rg -n "normalizeStatusCellForCurrentManagedLayout_" Config.gs >/dev/null
 rg -n "unknown key" Config.gs >/dev/null
+node scripts/config-validation-test.js
 rg -n "function resetConfigAndLogSheets_\\(" Config.gs >/dev/null
 rg -n "function findBestConfigJsonInSheet_\\(" Config.gs >/dev/null
 
@@ -30,6 +33,8 @@ rg -n "nonBillableSheetName: 'Non-Billable'" Config.gs >/dev/null
 rg -n "nonBillableTableName: 'NonBillable'" Config.gs >/dev/null
 rg -n "function assertValidTableName_" Config.gs >/dev/null
 rg -n "ensureManagedWorkbookStructure_" "Table Service.gs" >/dev/null
+rg -n "resolveLegacyStateSheet_" "Table Service.gs" >/dev/null
+node scripts/table-service-test.js
 rg -n "assertSheetHasExpectedColumns_" "Table Service.gs" >/dev/null
 rg -n "isSheetBlankForManagedHeader_" "Table Service.gs" >/dev/null
 rg -n "allowOverwrite: false" "Table Service.gs" >/dev/null

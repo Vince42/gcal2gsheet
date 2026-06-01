@@ -64,9 +64,10 @@ function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
   const sheet = ensureCalendarSheet_(ss);
   const invoicingSheet = ensureInvoicingSheet_(ss);
   const nonBillableSheet = ensureNonBillableSheet_(ss);
-  const legacyStateSheet = ss.getSheetByName(LEGACY_CALENDAR_STATE_SHEET_NAME);
-  const legacyInvoicingStateSheet = ss.getSheetByName(LEGACY_INVOICING_STATE_SHEET_NAME);
-  const legacyNonBillableStateSheet = ss.getSheetByName(LEGACY_NON_BILLABLE_STATE_SHEET_NAME);
+  const legacyStateSheetNames = getLegacyStateSheetNameCandidates_();
+  const legacyStateSheet = resolveLegacyStateSheet_(ss, legacyStateSheetNames.calendar);
+  const legacyInvoicingStateSheet = resolveLegacyStateSheet_(ss, legacyStateSheetNames.invoicing);
+  const legacyNonBillableStateSheet = resolveLegacyStateSheet_(ss, legacyStateSheetNames.nonBillable);
 
   migrateSheetToInlineIds_(sheet, CONFIG.header, LEGACY_CALENDAR_HEADER, legacyStateSheet);
   migrateSheetToInlineIds_(invoicingSheet, CONFIG.invoicingHeader, LEGACY_INVOICING_HEADER, legacyInvoicingStateSheet);
@@ -93,11 +94,14 @@ function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
   ensureTable_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
   deleteLegacyStateSheets_(
     ss,
-    collectLegacyStateSheets_(ss, [
-      LEGACY_CALENDAR_STATE_SHEET_NAME,
-      LEGACY_INVOICING_STATE_SHEET_NAME,
-      LEGACY_NON_BILLABLE_STATE_SHEET_NAME,
-    ])
+    collectLegacyStateSheets_(
+      ss,
+      [].concat(
+        legacyStateSheetNames.calendar,
+        legacyStateSheetNames.invoicing,
+        legacyStateSheetNames.nonBillable
+      )
+    )
   );
 
   return {
@@ -107,6 +111,12 @@ function ensureManagedWorkbookStructure_(ss, spreadsheetId) {
   };
 }
 
+
+
+function resolveLegacyStateSheet_(ss, sheetNames) {
+  const sheets = collectLegacyStateSheets_(ss, sheetNames || []);
+  return sheets.length > 0 ? sheets[0] : null;
+}
 
 function collectLegacyStateSheets_(ss, sheetNames) {
   const seenSheetIds = new Set();

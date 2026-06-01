@@ -46,6 +46,20 @@ const OBSOLETE_STATE_CONFIG_KEYS = Object.freeze([
   'nonBillableStateHeader',
 ]);
 
+const LEGACY_STATE_SHEET_NAME_PROPERTY_KEY = 'CALSYNC_LEGACY_STATE_SHEET_NAMES_JSON';
+
+const DEFAULT_LEGACY_STATE_SHEET_NAMES = Object.freeze({
+  calendar: ['_calendar_state'],
+  invoicing: ['_invoicing_state'],
+  nonBillable: ['_non_billable_state'],
+});
+
+const LEGACY_STATE_SHEET_CONFIG_KEY_GROUPS = Object.freeze({
+  calendar: 'stateSheetName',
+  invoicing: 'invoicingStateSheetName',
+  nonBillable: 'nonBillableStateSheetName',
+});
+
 const DEFAULT_CONFIG = Object.freeze({
   sheetName: 'Calendar',
   tableName: 'Calendar',
@@ -101,6 +115,11 @@ const CONFIG_SHEET_SPEC = Object.freeze({
 });
 
 let CONFIG = freezeConfigCopy_(DEFAULT_CONFIG);
+let LEGACY_STATE_SHEET_NAME_CANDIDATES = {
+  calendar: DEFAULT_LEGACY_STATE_SHEET_NAMES.calendar.slice(),
+  invoicing: DEFAULT_LEGACY_STATE_SHEET_NAMES.invoicing.slice(),
+  nonBillable: DEFAULT_LEGACY_STATE_SHEET_NAMES.nonBillable.slice(),
+};
 
 function refreshConfig_() {
   const state = readConfigStateFromSheet_();
@@ -124,6 +143,7 @@ function readConfigStateFromSheet_() {
   let validationMessage;
   try {
     parsedConfig = JSON.parse(jsonRaw);
+    rememberLegacyStateSheetNameCandidates_(parsedConfig);
   } catch (error) {
     validationMessage = `Invalid JSON in ${CONFIG_SHEET_SPEC.keys.json}: ${error.message}`;
   }
@@ -475,6 +495,108 @@ function clearSyncTokenProperties_(props, prefixes) {
   });
 }
 
+
+function rememberLegacyStateSheetNameCandidates_(rawConfig) {
+  const candidates = collectLegacyStateSheetNameCandidatesFromConfig_(rawConfig || {});
+  LEGACY_STATE_SHEET_NAME_CANDIDATES = mergeLegacyStateSheetNameCandidateSets_(
+    LEGACY_STATE_SHEET_NAME_CANDIDATES,
+    candidates
+  );
+  persistLegacyStateSheetNameCandidates_(LEGACY_STATE_SHEET_NAME_CANDIDATES);
+}
+
+function getLegacyStateSheetNameCandidates_() {
+  return mergeLegacyStateSheetNameCandidateSets_(
+    DEFAULT_LEGACY_STATE_SHEET_NAMES,
+    readPersistedLegacyStateSheetNameCandidates_(),
+    LEGACY_STATE_SHEET_NAME_CANDIDATES
+  );
+}
+
+function collectLegacyStateSheetNameCandidatesFromConfig_(rawConfig) {
+  const config = rawConfig && typeof rawConfig === 'object' ? rawConfig : {};
+  const result = {};
+  Object.keys(DEFAULT_LEGACY_STATE_SHEET_NAMES).forEach((group) => {
+    result[group] = uniqueNonEmptyStrings_([
+      config[LEGACY_STATE_SHEET_CONFIG_KEY_GROUPS[group]],
+    ].concat(DEFAULT_LEGACY_STATE_SHEET_NAMES[group]));
+  });
+  return result;
+}
+
+function mergeLegacyStateSheetNameCandidateSets_() {
+  const merged = {};
+  Object.keys(DEFAULT_LEGACY_STATE_SHEET_NAMES).forEach((group) => {
+    merged[group] = [];
+  });
+
+  Array.prototype.slice.call(arguments).forEach((candidateSet) => {
+    if (!candidateSet || typeof candidateSet !== 'object') {
+      return;
+    }
+    Object.keys(DEFAULT_LEGACY_STATE_SHEET_NAMES).forEach((group) => {
+      merged[group] = uniqueNonEmptyStrings_(merged[group].concat(candidateSet[group] || []));
+    });
+  });
+
+  return merged;
+}
+
+function uniqueNonEmptyStrings_(values) {
+  const seen = new Set();
+  const result = [];
+  (values || []).forEach((value) => {
+    const text = toText_(value).trim();
+    if (!text || seen.has(text)) {
+      return;
+    }
+    seen.add(text);
+    result.push(text);
+  });
+  return result;
+}
+
+function cloneLegacyStateSheetNameCandidates_(value) {
+  return mergeLegacyStateSheetNameCandidateSets_(value);
+}
+
+function persistLegacyStateSheetNameCandidates_(candidates) {
+  if (typeof PropertiesService === 'undefined') {
+    return;
+  }
+  try {
+    getConfigPropertiesStore_().setProperty(
+      LEGACY_STATE_SHEET_NAME_PROPERTY_KEY,
+      JSON.stringify(cloneLegacyStateSheetNameCandidates_(candidates))
+    );
+  } catch (error) {
+    if (!isPermissionDeniedError_(error)) {
+      throw error;
+    }
+    logStorageDebug_('legacy-state-sheet-names', `Ignored denied write while saving legacy sheet names: ${error}`);
+  }
+}
+
+function readPersistedLegacyStateSheetNameCandidates_() {
+  if (typeof PropertiesService === 'undefined') {
+    return null;
+  }
+  try {
+    const raw = getConfigPropertiesStore_().getProperty(LEGACY_STATE_SHEET_NAME_PROPERTY_KEY);
+    if (!raw) {
+      return null;
+    }
+    return mergeLegacyStateSheetNameCandidateSets_(JSON.parse(raw));
+  } catch (error) {
+    if (isPermissionDeniedError_(error)) {
+      logStorageDebug_('legacy-state-sheet-names', `Ignored denied read while loading legacy sheet names: ${error}`);
+      return null;
+    }
+    logStorageDebug_('legacy-state-sheet-names', `Ignored invalid legacy sheet name cache: ${error}`);
+    return null;
+  }
+}
+
 function mergeConfigWithDefaults_(overrideConfig) {
   return mergeKnownShape_(DEFAULT_CONFIG, normalizeConfigOverrideForCurrentSchema_(overrideConfig || {}));
 }
@@ -482,30 +604,8 @@ function mergeConfigWithDefaults_(overrideConfig) {
 function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
   const normalized = cloneConfig_(overrideConfig || {});
 
-  const previousStatusHeader = ['Calendar', 'Event', 'Date', 'Start', 'End', 'Duration', 'Invoiced'];
-  if (
-    Array.isArray(normalized.header)
-    && (
-      arraysEqual_(normalized.header, DEFAULT_INVOICING_HEADER)
-      || arraysEqual_(normalized.header, LEGACY_CALENDAR_HEADER)
-      || arraysEqual_(normalized.header, LEGACY_INVOICING_HEADER)
-      || arraysEqual_(normalized.header, previousStatusHeader)
-    )
-  ) {
-    delete normalized.header;
-  }
-
-  if (Array.isArray(normalized.invoicingHeader) && arraysEqual_(normalized.invoicingHeader, LEGACY_INVOICING_HEADER)) {
-    delete normalized.invoicingHeader;
-  }
-
-  if (
-    Array.isArray(normalized.nonBillableHeader)
-    && arraysEqual_(normalized.nonBillableHeader, LEGACY_NON_BILLABLE_HEADER)
-  ) {
-    delete normalized.nonBillableHeader;
-  }
-
+  normalizeManagedHeaderConfigKeys_(normalized);
+  normalizeStatusCellForCurrentManagedLayout_(normalized);
 
   OBSOLETE_STATE_CONFIG_KEYS.forEach((key) => {
     delete normalized[key];
@@ -518,18 +618,45 @@ function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
   return normalized;
 }
 
-function arraysEqual_(left, right) {
-  if (!Array.isArray(left) || !Array.isArray(right) || left.length !== right.length) {
-    return false;
+
+
+function normalizeStatusCellForCurrentManagedLayout_(normalizedConfig) {
+  if (!Object.prototype.hasOwnProperty.call(normalizedConfig, 'statusCell')) {
+    return;
   }
 
-  for (let i = 0; i < left.length; i += 1) {
-    if (left[i] !== right[i]) {
-      return false;
+  const normalizedStatusCell = toText_(normalizedConfig.statusCell).trim().toUpperCase();
+  const defaultStatusCell = buildDefaultStatusCell_(DEFAULT_HEADER);
+  const knownGeneratedStatusCells = [
+    buildDefaultStatusCell_(LEGACY_CALENDAR_HEADER),
+    buildDefaultStatusCell_(LEGACY_INVOICING_HEADER),
+    buildDefaultStatusCell_(DEFAULT_INVOICING_HEADER),
+  ];
+
+  if (
+    !/^[A-Z]+[1-9][0-9]*$/.test(normalizedStatusCell)
+    || knownGeneratedStatusCells.includes(normalizedStatusCell)
+  ) {
+    normalizedConfig.statusCell = defaultStatusCell;
+  } else {
+    normalizedConfig.statusCell = normalizedStatusCell;
+  }
+}
+
+function normalizeManagedHeaderConfigKeys_(normalizedConfig) {
+  // Header arrays are managed structural constants, not user-editable business
+  // configuration. Older generated ConfigJson payloads stored invoice-oriented
+  // Calendar headers here, and strict validation must migrate those stale values
+  // to the current inline-ID/status contract instead of blocking recovery/import.
+  [
+    'header',
+    'invoicingHeader',
+    'nonBillableHeader',
+  ].forEach((key) => {
+    if (Object.prototype.hasOwnProperty.call(normalizedConfig, key)) {
+      delete normalizedConfig[key];
     }
-  }
-
-  return true;
+  });
 }
 
 function mergeKnownShape_(baseValue, overrideValue) {
