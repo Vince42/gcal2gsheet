@@ -21,7 +21,7 @@ Documentation-only changes may use a reduced analysis that identifies affected d
 - Do not move logic across modules without a strong reason.
 - Do not introduce visible helper columns into the `Calendar` sheet.
 - Do not replace real spreadsheet date/time values with text.
-- Do not remove the hidden `_calendar_state` sheet design unless explicitly requested.
+- Do not remove or expose the hidden inline `ID`/`EventID` identity design unless explicitly requested.
 - Do not remove the Google Sheets native table object unless explicitly requested.
 - Preserve the main callable function `updateCalendarSheets()`.
 - Preserve menu creation in `onOpen()`.
@@ -101,8 +101,8 @@ Only calendar retrieval and normalization.
 This is where event fetch bugs and recurrence handling bugs should be fixed.
 
 ### `State Store.gs`
-Only hidden sheet read/write behavior.
-Keep visible and hidden row alignment stable.
+Only managed row identity read behavior.
+Keep hidden inline `ID` / `EventID` values stable.
 
 ### `Rebuild Engine.gs`
 Merging imported events with existing sheet rows.
@@ -135,7 +135,7 @@ When behavior is wrong:
    - scope behavior
    - duplicate behavior
    - invoice preservation
-   - row alignment with `_calendar_state`
+   - inline `ID`/`EventID` identity
 
 ## Preferred implementation style
 
@@ -155,7 +155,7 @@ When behavior is wrong:
 - uninvoiced changed rows update in place
 - invoiced changed rows produce a follow-up row
 - duplicate cleanup still follows precedence rules
-- visible and hidden sheets remain row-aligned
+- hidden inline `ID` / `EventID` values remain present and table-scoped
 - table range still matches visible data
 - date and time columns remain real spreadsheet values
 

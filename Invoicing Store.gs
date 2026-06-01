@@ -1,79 +1,61 @@
-function readInvoicingState_(sheet, stateSheet) {
-  const visibleLastRow = sheet.getLastRow();
-  const stateLastRow = stateSheet.getLastRow();
-  const visibleRowCount = Math.max(visibleLastRow - 1, 0);
-  const stateRowCount = Math.max(stateLastRow - 1, 0);
-  const rowCount = Math.max(visibleRowCount, stateRowCount);
+function readInvoicingState_(sheet) {
+  const rowCount = Math.max(sheet.getLastRow() - 1, 0);
   const byEventKey = new Map();
 
   if (rowCount === 0) {
     return { byEventKey };
   }
 
-  const visibleValues = visibleRowCount > 0
-    ? sheet.getRange(2, 1, visibleRowCount, CONFIG.invoicingHeader.length).getValues()
-    : [];
-  const stateValues = stateRowCount > 0
-    ? stateSheet.getRange(2, 1, stateRowCount, CONFIG.invoicingStateHeader.length).getValues()
-    : [];
+  const values = sheet.getRange(2, 1, rowCount, CONFIG.invoicingHeader.length).getValues();
 
-  for (let i = 0; i < rowCount; i += 1) {
-    const rowValues = i < visibleValues.length
-      ? visibleValues[i].slice()
-      : new Array(CONFIG.invoicingHeader.length).fill('');
-    const stateRow = i < stateValues.length ? stateValues[i] : [''];
-    const eventKey = toText_(stateRow[0]);
+  values.forEach((rowValues) => {
+    const eventKey = toText_(rowValues[0]);
+    const invoiceValues = rowValues.slice(1);
 
-    if (!eventKey || isCompletelyBlankRow_(rowValues)) {
-      continue;
+    if (!eventKey || isCompletelyBlankRow_(invoiceValues)) {
+      return;
     }
 
     byEventKey.set(eventKey, {
       eventKey,
-      invoiceNumber: toText_(rowValues[8]),
+      invoiceNumber: toText_(rowValues[9]),
       values: rowValues,
     });
-  }
+  });
 
   return { byEventKey };
 }
 
-function migrateCalendarInvoicesToInvoicing_(calendarSheet, calendarStateSheet, invoicingSheet, invoicingStateSheet) {
-  const invoiceStore = readInvoicingState_(invoicingSheet, invoicingStateSheet);
+function migrateCalendarInvoicesToInvoicing_(calendarSheet, invoicingSheet) {
+  const invoiceStore = readInvoicingState_(invoicingSheet);
   const existingKeys = new Set(invoiceStore.byEventKey.keys());
-  const legacyHeaderLength = CONFIG.invoicingHeader.length;
-  const visibleRowCount = Math.max(calendarSheet.getLastRow() - 1, 0);
-  const stateRowCount = Math.max(calendarStateSheet.getLastRow() - 1, 0);
-  const rowCount = Math.min(visibleRowCount, stateRowCount);
+  const rowCount = Math.max(calendarSheet.getLastRow() - 1, 0);
 
   if (rowCount === 0) {
     return 0;
   }
 
-  const visibleValues = calendarSheet.getRange(2, 1, rowCount, legacyHeaderLength).getValues();
-  const stateValues = calendarStateSheet.getRange(2, 1, rowCount, CONFIG.stateHeader.length).getValues();
+  const readWidth = Math.max(CONFIG.invoicingHeader.length + 1, LEGACY_INVOICING_HEADER.length + 2);
+  const calendarValues = calendarSheet.getRange(2, 1, rowCount, readWidth).getValues();
   const appendValues = [];
-  const appendStateValues = [];
 
-  for (let i = 0; i < rowCount; i += 1) {
-    const rowValues = visibleValues[i].slice();
-    const eventKey = toText_(stateValues[i][0]);
-    const invoiceNumber = toText_(rowValues[8]).trim();
+  calendarValues.forEach((rowValues) => {
+    const eventKey = toText_(rowValues[0]);
+    const invoicingValues = normalizeCalendarInvoiceValues_(rowValues);
 
-    if (!eventKey || !invoiceNumber || existingKeys.has(eventKey)) {
-      continue;
+    if (!eventKey || !hasInvoiceRegisterData_(invoicingValues) || existingKeys.has(eventKey)) {
+      return;
     }
 
-    appendValues.push(normalizeInvoicingValues_(rowValues));
-    appendStateValues.push([eventKey]);
+    appendValues.push(invoicingValues);
     existingKeys.add(eventKey);
-  }
+  });
 
-  appendInvoicingRows_(invoicingSheet, invoicingStateSheet, appendValues, appendStateValues);
+  appendInvoicingRows_(invoicingSheet, appendValues);
   return appendValues.length;
 }
 
-function appendInvoicingRows_(invoicingSheet, invoicingStateSheet, values, stateValues) {
+function appendInvoicingRows_(invoicingSheet, values) {
   if (!values || values.length === 0) {
     return;
   }
@@ -83,15 +65,8 @@ function appendInvoicingRows_(invoicingSheet, invoicingStateSheet, values, state
   if (invoicingSheet.getMaxRows() < neededLastRow) {
     invoicingSheet.insertRowsAfter(invoicingSheet.getMaxRows(), neededLastRow - invoicingSheet.getMaxRows());
   }
-  if (invoicingStateSheet.getMaxRows() < neededLastRow) {
-    invoicingStateSheet.insertRowsAfter(
-      invoicingStateSheet.getMaxRows(),
-      neededLastRow - invoicingStateSheet.getMaxRows()
-    );
-  }
 
   invoicingSheet.getRange(startRow, 1, values.length, CONFIG.invoicingHeader.length).setValues(values);
-  invoicingStateSheet.getRange(startRow, 1, stateValues.length, CONFIG.invoicingStateHeader.length).setValues(stateValues);
 }
 
 function normalizeInvoicingValues_(rowValues) {
@@ -102,11 +77,37 @@ function normalizeInvoicingValues_(rowValues) {
   return values;
 }
 
-function repairInvoicingStateFromCalendarRows_(calendarSheet, calendarStateSheet, invoicingSheet, invoicingStateSheet) {
-  const calendarRowCount = Math.min(
-    Math.max(calendarSheet.getLastRow() - 1, 0),
-    Math.max(calendarStateSheet.getLastRow() - 1, 0)
-  );
+function normalizeCalendarInvoiceValues_(rowValues) {
+  if (isLegacyCalendarStatusValue_(rowValues[7])) {
+    return normalizeInvoicingValues_([
+      rowValues[0],
+      rowValues[1],
+      rowValues[2],
+      rowValues[3],
+      rowValues[4],
+      rowValues[5],
+      rowValues[6],
+      rowValues[8],
+      rowValues[9],
+      rowValues[10],
+      rowValues[11],
+    ]);
+  }
+
+  return normalizeInvoicingValues_(rowValues);
+}
+
+function isLegacyCalendarStatusValue_(value) {
+  const text = toText_(value).trim();
+  return text === 'Open' || text === 'Invoiced' || text === 'Non-billable';
+}
+
+function hasInvoiceRegisterData_(rowValues) {
+  return [7, 8, 9, 10].some((index) => toText_(rowValues[index]).trim() !== '');
+}
+
+function repairInvoicingStateFromCalendarRows_(calendarSheet, invoicingSheet) {
+  const calendarRowCount = Math.max(calendarSheet.getLastRow() - 1, 0);
   const invoicingRowCount = Math.max(invoicingSheet.getLastRow() - 1, 0);
 
   if (calendarRowCount === 0 || invoicingRowCount === 0) {
@@ -114,42 +115,33 @@ function repairInvoicingStateFromCalendarRows_(calendarSheet, calendarStateSheet
   }
 
   const calendarValues = calendarSheet.getRange(2, 1, calendarRowCount, CONFIG.header.length).getValues();
-  const calendarStateValues = calendarStateSheet.getRange(2, 1, calendarRowCount, CONFIG.stateHeader.length).getValues();
   const invoicingValues = invoicingSheet.getRange(2, 1, invoicingRowCount, CONFIG.invoicingHeader.length).getValues();
-  const invoicingStateValues = invoicingStateSheet.getRange(
-    2,
-    1,
-    invoicingRowCount,
-    CONFIG.invoicingStateHeader.length
-  ).getValues();
   const eventKeysByInvoiceMatchKey = new Map();
 
-  calendarValues.forEach((rowValues, index) => {
-    const eventKey = toText_(calendarStateValues[index][0]);
+  calendarValues.forEach((rowValues) => {
+    const eventKey = toText_(rowValues[0]);
     if (eventKey) {
-      eventKeysByInvoiceMatchKey.set(buildInvoiceMatchKey_(rowValues), eventKey);
+      eventKeysByInvoiceMatchKey.set(buildInvoiceMatchKey_(rowValues.slice(1)), eventKey);
     }
   });
 
   let repairedCount = 0;
   invoicingValues.forEach((rowValues, index) => {
-    if (toText_(invoicingStateValues[index][0])) {
+    if (toText_(rowValues[0])) {
       return;
     }
 
-    const eventKey = eventKeysByInvoiceMatchKey.get(buildInvoiceMatchKey_(rowValues));
+    const eventKey = eventKeysByInvoiceMatchKey.get(buildInvoiceMatchKey_(rowValues.slice(1)));
     if (!eventKey) {
       return;
     }
 
-    invoicingStateValues[index][0] = eventKey;
+    invoicingValues[index][0] = eventKey;
     repairedCount += 1;
   });
 
   if (repairedCount > 0) {
-    invoicingStateSheet
-      .getRange(2, 1, invoicingStateValues.length, CONFIG.invoicingStateHeader.length)
-      .setValues(invoicingStateValues);
+    invoicingSheet.getRange(2, 1, invoicingValues.length, CONFIG.invoicingHeader.length).setValues(invoicingValues);
   }
 
   return repairedCount;
@@ -165,19 +157,13 @@ function buildInvoiceMatchKey_(rowValues) {
   });
 }
 
-function repairInvoicingStateFromImportedEvents_(currentByKey, invoicingSheet, invoicingStateSheet) {
+function repairInvoicingStateFromImportedEvents_(currentByKey, invoicingSheet) {
   const invoicingRowCount = Math.max(invoicingSheet.getLastRow() - 1, 0);
   if (invoicingRowCount === 0) {
     return 0;
   }
 
   const invoicingValues = invoicingSheet.getRange(2, 1, invoicingRowCount, CONFIG.invoicingHeader.length).getValues();
-  const invoicingStateValues = invoicingStateSheet.getRange(
-    2,
-    1,
-    invoicingRowCount,
-    CONFIG.invoicingStateHeader.length
-  ).getValues();
   const eventKeysByInvoiceMatchKey = new Map();
 
   currentByKey.forEach((eventObj, eventKey) => {
@@ -186,23 +172,21 @@ function repairInvoicingStateFromImportedEvents_(currentByKey, invoicingSheet, i
 
   let repairedCount = 0;
   invoicingValues.forEach((rowValues, index) => {
-    if (toText_(invoicingStateValues[index][0])) {
+    if (toText_(rowValues[0])) {
       return;
     }
 
-    const eventKey = eventKeysByInvoiceMatchKey.get(buildInvoiceMatchKey_(rowValues));
+    const eventKey = eventKeysByInvoiceMatchKey.get(buildInvoiceMatchKey_(rowValues.slice(1)));
     if (!eventKey) {
       return;
     }
 
-    invoicingStateValues[index][0] = eventKey;
+    invoicingValues[index][0] = eventKey;
     repairedCount += 1;
   });
 
   if (repairedCount > 0) {
-    invoicingStateSheet
-      .getRange(2, 1, invoicingStateValues.length, CONFIG.invoicingStateHeader.length)
-      .setValues(invoicingStateValues);
+    invoicingSheet.getRange(2, 1, invoicingValues.length, CONFIG.invoicingHeader.length).setValues(invoicingValues);
   }
 
   return repairedCount;

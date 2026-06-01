@@ -1,9 +1,5 @@
-function readExistingState_(sheet, stateSheet, timeZone, scope, invoiceStore, nonBillableStore) {
-  const visibleLastRow = sheet.getLastRow();
-  const stateLastRow = stateSheet.getLastRow();
-  const visibleRowCount = Math.max(visibleLastRow - 1, 0);
-  const stateRowCount = Math.max(stateLastRow - 1, 0);
-  const rowCount = Math.max(visibleRowCount, stateRowCount);
+function readExistingState_(sheet, timeZone, scope, invoiceStore, nonBillableStore) {
+  const visibleRowCount = Math.max(sheet.getLastRow() - 1, 0);
 
   const result = {
     hasManagedRows: false,
@@ -13,32 +9,18 @@ function readExistingState_(sheet, stateSheet, timeZone, scope, invoiceStore, no
     unmanagedRows: [],
   };
 
-  if (rowCount === 0) {
+  if (visibleRowCount === 0) {
     return result;
   }
 
-  const visibleValues = visibleRowCount > 0
-    ? sheet.getRange(2, 1, visibleRowCount, CONFIG.header.length).getValues()
-    : [];
+  const visibleValues = sheet.getRange(2, 1, visibleRowCount, CONFIG.header.length).getValues();
 
-  const stateValues = stateRowCount > 0
-    ? stateSheet.getRange(2, 1, stateRowCount, CONFIG.stateHeader.length).getValues()
-    : [];
-
-  for (let i = 0; i < rowCount; i += 1) {
-    const rowValues = i < visibleValues.length
-      ? visibleValues[i].slice()
-      : new Array(CONFIG.header.length).fill('');
-
-    const stateRow = i < stateValues.length
-      ? stateValues[i]
-      : ['', ''];
-
-    const eventKey = toText_(stateRow[0]);
-    const rowKind = toText_(stateRow[1]) || CONFIG.rowKind.unmanaged;
-    const invoiceNumber = rowKind === CONFIG.rowKind.changedCopy
-      ? ''
-      : getRegisterStatusMarkerForEventKey_(eventKey, invoiceStore, nonBillableStore);
+  for (let i = 0; i < visibleValues.length; i += 1) {
+    const fullRowValues = visibleValues[i].slice();
+    const eventKey = toText_(fullRowValues[0]);
+    const rowValues = fullRowValues.slice(1);
+    const rowKind = CONFIG.rowKind.normal;
+    const invoiceNumber = getRegisterStatusMarkerForEventKey_(eventKey, invoiceStore, nonBillableStore);
     const signature = buildSheetRowSignature_(rowValues, timeZone);
 
     if (eventKey) {

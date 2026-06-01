@@ -14,7 +14,7 @@ The project requires observability that is useful for recovery and troubleshooti
 
 `Log` is the only persistent spreadsheet sheet for runtime debug diagnostics.
 
-Persistent runtime diagnostics MUST NOT be written to `Config`, `Calendar`, `_calendar_state`, or configuration metadata locations. Logs MUST be treated as observability output, never as runtime input.
+Persistent runtime diagnostics MUST NOT be written to `Config`, managed data tables, hidden `ID`/`EventID` columns, or configuration metadata locations. Logs MUST be treated as observability output, never as runtime input.
 
 Logging MUST be best-effort. Failure to create, append, format, or rotate logs MUST NOT block menu creation, recovery/reset, configuration validation, or calendar import error handling.
 
@@ -27,7 +27,7 @@ Log entries SHOULD be structured enough to support troubleshooting across recove
 - Logging failure MUST NOT block recovery.
 - Logging failure MUST NOT convert an invalid configuration into a valid one or hide a validation failure.
 - Configuration validation MUST still work when logging is unavailable or malformed.
-- Logs MUST NOT be stored in `Config`, `Calendar`, `_calendar_state`, `ConfigJson`, `SchemaRegistryJson`, or `Validity`.
+- Logs MUST NOT be stored in `Config`, managed data tables, hidden `ID`/`EventID` columns, `ConfigJson`, `SchemaRegistryJson`, or `Validity`.
 - Credentials, tokens, and secrets MUST NOT be logged.
 
 ## Allowed Future Changes
@@ -39,7 +39,7 @@ Log entries SHOULD be structured enough to support troubleshooting across recove
 
 ## Explicitly Forbidden Changes
 
-- Writing persistent debug logs into configuration, calendar data, hidden state, schema, or validity locations.
+- Writing persistent debug logs into configuration, managed data tables, hidden ID/EventID columns, schema, or validity locations.
 - Reading logs as business configuration, validation metadata, migration input, or runtime control signals.
 - Allowing malformed or unavailable logs to prevent `onOpen()` menu creation, reset/recovery, or config validation.
 - Logging credentials, tokens, secrets, or other sensitive authentication material.

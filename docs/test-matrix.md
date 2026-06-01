@@ -34,7 +34,7 @@ Unless a row says otherwise, tests start from this baseline:
 - `ConfigJson` is valid and complete.
 - `SchemaRegistryJson` is valid metadata.
 - `Calendar` sheet exists with the native Google Sheets table object.
-- `_calendar_state` exists, is hidden, and is row-aligned with visible calendar rows.
+- Calendar uses a hidden `ID` column and register sheets use hidden `EventID` columns.
 - `Log` exists with the current supported log layout.
 - User-owned sheets and named ranges exist and must remain unchanged.
 - Calendar fixture data includes past timed events, future timed events, all-day events, cancelled events, recurring past instances, duplicates, invoiced rows, uninvoiced rows, and rows before `importStartDate`.
@@ -44,14 +44,14 @@ Unless a row says otherwise, tests start from this baseline:
 | ID | Supported state | Operation | Required assertions |
 |---|---|---|---|
 | SS-01 | Fresh spreadsheet with no managed sheets. | Open spreadsheet, initialize/recover, then validate. | Menu is created; required managed sheets can be initialized or recovered; no import runs until valid config exists; user-owned sheets/ranges are not touched. |
-| SS-02 | Current valid managed layout. | `onOpen()`, `onEdit()` on config, and one import. | Menu exists; `Validity` reports valid config; import can run; table, state sheet, and log remain valid. |
+| SS-02 | Current valid managed layout. | `onOpen()`, `onEdit()` on config, and one import. | Menu exists; `Validity` reports valid config; import can run; tables, hidden ID/EventID columns, and log remain valid. |
 | SS-03 | `Config` sheet missing. | `onOpen()`, recovery/reset. | Menu is created; recovery/reset is reachable; diagnostics are best-effort; no calendar import runs before valid config is restored. |
-| SS-04 | `Calendar` sheet missing. | Import with valid config. | Calendar sheet/table can be created or repaired according to implementation policy; `_calendar_state` alignment is established; user-owned sheets are not touched. |
-| SS-05 | `_calendar_state` sheet missing. | Import with existing visible `Calendar` rows. | Hidden state is recreated or import is safely blocked according to implementation policy; visible rows are not silently corrupted; alignment is valid before writes complete. |
+| SS-04 | `Calendar` sheet missing. | Import with valid config. | Calendar sheet/table can be created or repaired according to implementation policy; the hidden `ID` column is present; user-owned sheets are not touched. |
+| SS-05 | Legacy `_calendar_state` sheet exists or is missing during inline-ID migration. | Import with existing visible `Calendar` rows. | Existing state keys are migrated when available; missing legacy state does not silently shift row identity; obsolete state sheets are deleted after migration. |
 | SS-06 | `Log` sheet missing. | `onOpen()`, config validation, import error path. | Menu/recovery/config validation still work; `Log` may be recreated; failure to recreate it does not block recovery. |
 | SS-07 | `Log` sheet malformed or unwritable. | `onOpen()`, reset/recovery, config validation. | Logging failure is contained; menu/recovery/config validation still work; validation failures remain visible through non-log diagnostics where possible. |
 | SS-08 | `Calendar` contains rows before `importStartDate`. | Import. | Historical pre-start rows remain untouched and are not re-imported, updated, deleted, or state-mutated. |
-| SS-09 | Visible `Calendar` rows and `_calendar_state` rows are misaligned. | Import or preflight validation. | Import is blocked or alignment is repaired deterministically before writes; no row identity is silently shifted. |
+| SS-09 | Visible `Calendar` rows have missing or stale inline IDs. | Import or preflight validation. | Import is blocked or inline IDs are repaired deterministically before writes; no row identity is silently shifted. |
 | SS-10 | User-owned sheets, tabs, named ranges, and extra cells exist. | Initialization, migration, reset, and import. | Only managed ranges/sheets are changed; user-owned spreadsheet state is preserved. |
 | SS-11 | Stale values exist in old managed config rows/cells. | Migration/reset. | Stale cells do not become `ConfigJson`, `SchemaRegistryJson`, runtime config, or log input; final layout validates. |
 | SS-12 | Managed sheet write fails for diagnostics. | `onOpen()` with invalid config. | Menu creation still completes; recovery remains reachable; failure is surfaced by the safest available channel. |
@@ -114,25 +114,25 @@ Unless a row says otherwise, tests start from this baseline:
 
 | ID | Supported import state | Operation | Required assertions |
 |---|---|---|---|
-| IMP-01 | Past timed events inside scope. | Import. | Events are written with real spreadsheet date/time values and aligned hidden state rows. |
+| IMP-01 | Past timed events inside scope. | Import. | Events are written with real spreadsheet date/time values and hidden inline `ID` values. |
 | IMP-02 | Future timed events. | Import. | Future events are never written. |
 | IMP-03 | All-day events. | Import. | All-day events are never imported. |
 | IMP-04 | Cancelled events. | Import. | Cancelled events are never imported. |
 | IMP-05 | Recurring events with past and future instances. | Import. | Only past timed instances inside active scope survive filtering. |
-| IMP-06 | Existing rows before `importStartDate`. | Import. | Rows remain untouched in visible sheet and hidden state. |
-| IMP-07 | Existing uninvoiced row changed in source calendar. | Import. | Row updates in place; state remains aligned. |
+| IMP-06 | Existing rows before `importStartDate`. | Import. | Rows remain untouched, including their hidden inline `ID` values. |
+| IMP-07 | Existing uninvoiced row changed in source calendar. | Import. | Row updates in place; inline `ID` remains stable. |
 | IMP-08 | Existing invoiced row changed in source calendar. | Import. | Historical row is preserved; directly following row is created with `RowKind = CHANGED_COPY`. |
 | IMP-09 | Duplicate rows within the same calendar. | Import/rebuild duplicate cleanup. | All rows for that same-calendar duplicate are removed according to duplicate precedence. |
 | IMP-10 | Duplicate between default `Event` calendar and a specific configured calendar. | Import/rebuild duplicate cleanup. | Specific calendar row wins; `Event` row loses. |
 | IMP-11 | Duplicate across multiple non-default calendars. | Import/rebuild duplicate cleanup. | Exactly one row remains according to configured calendar priority. |
 | IMP-12 | Empty `InvoiceNumber`. | Import changed event. | Row is treated as uninvoiced and may update in place. |
 | IMP-13 | Non-empty `InvoiceNumber`. | Import changed event. | Row is treated as invoiced and must not be overwritten by changed source values. |
-| IMP-14 | Visible rows and `_calendar_state` rows aligned before import. | Import. | Alignment remains one-to-one after write. |
+| IMP-14 | Calendar rows contain inline `ID` values before import. | Import. | Inline `ID` values remain present and travel with managed rows after write. |
 | IMP-15 | Native table range exists before import. | Import. | Table range matches visible data after write. |
 | IMP-16 | Date/time cells exist as spreadsheet values before import. | Import. | Date/time columns remain spreadsheet date/time values, not text. |
 | IMP-17 | Calendar fixture has no changes since previous import. | Import twice. | Second import is idempotent except for documented diagnostics/log timestamps. |
 | IMP-18 | Scope-affecting config changed since last import. | Save config and import. | Sync tokens are invalidated and import scope is rebuilt from persisted config. |
-| IMP-19 | Calendar API fetch fails after valid config. | Import. | Failure is reported; partial writes do not corrupt visible/state alignment; recovery remains available. |
+| IMP-19 | Calendar API fetch fails after valid config. | Import. | Failure is reported; partial writes do not corrupt inline row identity; recovery remains available. |
 | IMP-20 | Log write fails during import diagnostics. | Import error path. | Logging failure does not mask import failure or corrupt config/recovery state. |
 
 ## 6. Security State Matrix

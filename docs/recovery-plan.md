@@ -36,7 +36,7 @@ The recovery plan is intentionally prescriptive. The project should stop re-liti
 
 ### Decision 4: `Log` is the only persistent debug-log sheet
 
-**Decision:** Runtime diagnostics that need sheet persistence go to `Log`, not `Config`, `Calendar`, or hidden state sheets.
+**Decision:** Runtime diagnostics that need sheet persistence go to `Log`, not `Config`, managed data tables, or hidden ID/EventID columns.
 
 **Reasoning:** Mixing debug logs into the config sheet polluted layout semantics and caused migration/validation problems.
 
@@ -68,17 +68,17 @@ The recovery plan is intentionally prescriptive. The project should stop re-liti
 
 ### Decision 8: Calendar data invariants remain higher priority than UX polish
 
-**Decision:** Future events, all-day events, rows before `importStartDate`, invoice-preservation behavior, duplicate precedence, and `_calendar_state` alignment are non-negotiable domain invariants.
+**Decision:** Future events, all-day events, rows before `importStartDate`, invoice-preservation behavior, duplicate precedence, and inline `ID`/`EventID` identity are non-negotiable domain invariants.
 
 **Reasoning:** These are core business correctness rules. Config or UX work must not destabilize them.
 
 **Expected impact:** Keeps future config/recovery work from accidentally damaging import correctness.
 
-### Decision 9: Google Sheets native table and `_calendar_state` stay
+### Decision 9: Google Sheets native table and inline identifiers stay
 
-**Decision:** The visible `Calendar` table and hidden `_calendar_state` sheet remain part of the architecture unless explicitly replaced by a dedicated migration plan.
+**Decision:** The visible managed tables and hidden first-column `ID`/`EventID` identifiers remain part of the architecture unless explicitly replaced by a dedicated migration plan.
 
-**Reasoning:** These mechanisms preserve user-facing data and hidden row identity/alignment. Removing them opportunistically would create data-loss risk.
+**Reasoning:** These mechanisms preserve user-facing data while keeping row identity inside each managed table. Removing them opportunistically would create data-loss risk.
 
 **Expected impact:** Stabilizes the data model and prevents unrelated refactors from altering persistence semantics.
 
@@ -120,7 +120,7 @@ The recovery plan is intentionally prescriptive. The project should stop re-liti
 4. Empty `InvoiceNumber` means uninvoiced.
 5. Non-empty `InvoiceNumber` means invoiced.
 6. Changed invoiced rows preserve the old row and create a `CHANGED_COPY` follow-up row.
-7. Visible rows and `_calendar_state` rows remain aligned.
+7. Managed rows retain inline hidden `ID`/`EventID` values.
 8. The native Google Sheets table range matches visible data.
 9. Date and time columns remain real spreadsheet values, not text.
 10. Duplicate precedence remains stable.
@@ -263,7 +263,7 @@ updateCalendarSheets()
   -> fetch calendars
   -> rebuild rows
   -> duplicate cleanup
-  -> write visible/state sheets
+  -> write managed sheets with inline IDs
   -> update table
   -> save sync tokens
 
@@ -283,7 +283,7 @@ onEdit(e)
 | Config status | `Config!Validity` | Output-only diagnostics |
 | Debug log | `Log` | Structured diagnostics only |
 | Imported rows | `Calendar` | User-visible data |
-| Row identity/state | `_calendar_state` | Hidden alignment state |
+| Row identity/state | Hidden `ID` / `EventID` columns | Inline managed row identity |
 | Sync tokens | Apps Script properties | Never visible/tracked |
 
 ---
@@ -384,7 +384,7 @@ Each PR should answer:
 
 - Require an architecture review for any PR touching config source-of-truth semantics.
 - Require a recovery review for any PR touching `onOpen()`, `onEdit()`, alerts, toasts, `Validity`, or reset.
-- Require a data-safety review for any PR touching `Calendar`, `_calendar_state`, table ranges, or sync tokens.
+- Require a data-safety review for any PR touching `Calendar`, hidden `ID`/`EventID` columns, table ranges, or sync tokens.
 
 ---
 
@@ -441,7 +441,7 @@ Required cases:
 - uninvoiced changed rows update in place,
 - invoiced changed rows create `CHANGED_COPY`,
 - duplicate precedence remains stable,
-- visible/state row alignment preserved,
+- inline `ID` / `EventID` identity preserved,
 - date/time values remain spreadsheet dates/times.
 
 ### Test layer 5: live smoke tests

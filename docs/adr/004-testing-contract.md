@@ -30,7 +30,7 @@ Release gates MUST match the actual architecture. They MUST require recovery thr
 - Tests MUST prove recovery/reset remains reachable without valid configuration.
 - Tests MUST prove config validation still works when logging is unavailable or malformed.
 - Tests MUST protect layout migration from stale cells, old rows, and user-owned sheet/range clobbering.
-- Tests MUST protect import-domain invariants: no future events, no all-day or cancelled events, untouched rows before `importStartDate`, invoice preservation, duplicate precedence, visible/state row alignment, and real spreadsheet date/time values.
+- Tests MUST protect import-domain invariants: no future events, no all-day or cancelled events, untouched rows before `importStartDate`, invoice preservation, duplicate precedence, inline `ID` / `EventID` identity, and real spreadsheet date/time values.
 - Tests MUST avoid relying solely on source-text presence checks for behavior-critical paths.
 
 ## Allowed Future Changes

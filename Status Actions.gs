@@ -81,48 +81,48 @@ function markSelectedCalendarRows_(targetSheetName) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const spreadsheetId = ss.getId();
     const managedSheets = ensureManagedWorkbookStructure_(ss, spreadsheetId);
-    const selectedRows = collectSelectedCalendarRows_(ss, managedSheets.sheet, managedSheets.stateSheet);
+    const selectedRows = collectSelectedCalendarRows_(ss, managedSheets.sheet);
 
     if (selectedRows.length === 0) {
       showToastMessage_(ss, 'No selected Calendar rows to mark.', { severity: 'info' });
       return;
     }
 
-    showMarkProgress_(ss, targetSheetName, 0, selectedRows.length);
+    showMarkProgress_(ss, targetSheetName, 0, selectedRows.length, 'Preparing selected rows');
 
     let markedCount = 0;
+    let removedCount = 0;
     if (targetSheetName === CONFIG.invoicingSheetName) {
       markedCount = appendCalendarRowsToInvoicing_(
         selectedRows,
         managedSheets.invoicingSheet,
-        managedSheets.invoicingStateSheet,
-        (done, total) => showMarkProgress_(ss, targetSheetName, done, total)
+        (done, total) => showMarkProgress_(ss, targetSheetName, done, total, 'Preparing register rows')
       );
-      removeRegisterRowsByEventKeys_(
+      showMarkProgress_(ss, targetSheetName, selectedRows.length, selectedRows.length, 'Removing moved rows');
+      removedCount = removeRegisterRowsByEventKeys_(
         managedSheets.nonBillableSheet,
-        managedSheets.nonBillableStateSheet,
         CONFIG.nonBillableHeader,
-        CONFIG.nonBillableStateHeader,
-        selectedRows.map((row) => row.eventKey)
+        selectedRows.map((row) => row.eventKey),
+        (done, total) => showMarkProgress_(ss, targetSheetName, done, total, 'Removing moved rows')
       );
     } else if (targetSheetName === CONFIG.nonBillableSheetName) {
       markedCount = appendCalendarRowsToNonBillable_(
         selectedRows,
         managedSheets.nonBillableSheet,
-        managedSheets.nonBillableStateSheet,
-        (done, total) => showMarkProgress_(ss, targetSheetName, done, total)
+        (done, total) => showMarkProgress_(ss, targetSheetName, done, total, 'Preparing register rows')
       );
-      removeRegisterRowsByEventKeys_(
+      showMarkProgress_(ss, targetSheetName, selectedRows.length, selectedRows.length, 'Removing moved rows');
+      removedCount = removeRegisterRowsByEventKeys_(
         managedSheets.invoicingSheet,
-        managedSheets.invoicingStateSheet,
         CONFIG.invoicingHeader,
-        CONFIG.invoicingStateHeader,
-        selectedRows.map((row) => row.eventKey)
+        selectedRows.map((row) => row.eventKey),
+        (done, total) => showMarkProgress_(ss, targetSheetName, done, total, 'Removing moved rows')
       );
     } else {
       throw new Error(`Unsupported mark target: ${targetSheetName}`);
     }
 
+    showMarkProgress_(ss, targetSheetName, selectedRows.length, selectedRows.length, 'Formatting registers');
     applyNumberFormats_(managedSheets.invoicingSheet, CONFIG.invoicingHeader);
     applyNumberFormats_(managedSheets.nonBillableSheet, CONFIG.nonBillableHeader);
     ensureTableRange_(spreadsheetId, managedSheets.invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
@@ -134,7 +134,8 @@ function markSelectedCalendarRows_(targetSheetName) {
     );
 
     SpreadsheetApp.flush();
-    showToastMessage_(ss, `${markedCount} selected Calendar row(s) marked as ${targetSheetName}.`, {
+    const movedMessage = removedCount > 0 ? ` ${removedCount} row(s) removed from the other register.` : '';
+    showToastMessage_(ss, `${markedCount} selected Calendar row(s) marked as ${targetSheetName}.${movedMessage}`, {
       severity: 'info',
     });
   } finally {
@@ -142,11 +143,8 @@ function markSelectedCalendarRows_(targetSheetName) {
   }
 }
 
-function collectSelectedCalendarRows_(ss, sheet, stateSheet) {
-  const rowCount = Math.min(
-    Math.max(sheet.getLastRow() - 1, 0),
-    Math.max(stateSheet.getLastRow() - 1, 0)
-  );
+function collectSelectedCalendarRows_(ss, sheet) {
+  const rowCount = Math.max(sheet.getLastRow() - 1, 0);
   if (rowCount === 0) {
     return [];
   }
@@ -157,19 +155,19 @@ function collectSelectedCalendarRows_(ss, sheet, stateSheet) {
   }
 
   const values = sheet.getRange(2, 1, rowCount, CONFIG.header.length).getValues();
-  const stateValues = stateSheet.getRange(2, 1, rowCount, CONFIG.stateHeader.length).getValues();
   const selectedRows = [];
 
   selectedRowNumbers.forEach((sheetRow) => {
     const index = sheetRow - 2;
-    const eventKey = toText_(stateValues[index][0]);
-    if (!eventKey || isCompletelyBlankRow_(values[index])) {
+    const eventKey = toText_(values[index][0]);
+    const rowValues = values[index].slice(1);
+    if (!eventKey || isCompletelyBlankRow_(rowValues)) {
       return;
     }
 
     selectedRows.push({
       eventKey,
-      values: values[index].slice(),
+      values: rowValues,
     });
   });
 
@@ -181,16 +179,64 @@ function collectSelectedCalendarRowNumbers_(ss, sheet, rowCount) {
   const rowNumbers = new Set();
   const firstDataRow = 2;
   const lastDataRow = rowCount + 1;
+  const hiddenRowsByGridMetadata = collectHiddenRowsByGridMetadata_(ss, sheet, firstDataRow, lastDataRow);
 
   ranges.forEach((range) => {
     const startRow = Math.max(range.getRow(), firstDataRow);
     const endRow = Math.min(range.getLastRow(), lastDataRow);
     for (let row = startRow; row <= endRow; row += 1) {
-      rowNumbers.add(row);
+      if (isCalendarSheetRowVisible_(sheet, row, hiddenRowsByGridMetadata)) {
+        rowNumbers.add(row);
+      }
     }
   });
 
   return Array.from(rowNumbers).sort((left, right) => left - right);
+}
+
+function isCalendarSheetRowVisible_(sheet, row, hiddenRowsByGridMetadata) {
+  if (hiddenRowsByGridMetadata && hiddenRowsByGridMetadata.has(row)) {
+    return false;
+  }
+  if (sheet.isRowHiddenByFilter(row)) {
+    return false;
+  }
+  if (sheet.isRowHiddenByUser(row)) {
+    return false;
+  }
+  return true;
+}
+
+function collectHiddenRowsByGridMetadata_(ss, sheet, firstRow, lastRow) {
+  const hiddenRows = new Set();
+  if (!ss || !sheet || firstRow > lastRow || typeof Sheets === 'undefined') {
+    return hiddenRows;
+  }
+
+  try {
+    const rangeA1 = `'${escapeSheetNameForFormula_(sheet.getName())}'!${firstRow}:${lastRow}`;
+    const model = Sheets.Spreadsheets.get(ss.getId(), {
+      ranges: [rangeA1],
+      fields: 'sheets(properties(sheetId),data(startRow,rowMetadata(hiddenByFilter,hiddenByUser)))',
+      includeGridData: true,
+    });
+    const sheetModel = (model.sheets || []).find(
+      (entry) => entry.properties && entry.properties.sheetId === sheet.getSheetId()
+    );
+    const gridData = sheetModel && sheetModel.data && sheetModel.data[0];
+    const rowMetadata = (gridData && gridData.rowMetadata) || [];
+    const zeroBasedStartRow = Number(gridData && gridData.startRow) || firstRow - 1;
+
+    rowMetadata.forEach((metadata, index) => {
+      if (metadata && (metadata.hiddenByFilter || metadata.hiddenByUser)) {
+        hiddenRows.add(zeroBasedStartRow + index + 1);
+      }
+    });
+  } catch (error) {
+    // Fall back to Apps Script row checks below if grid metadata is unavailable.
+  }
+
+  return hiddenRows;
 }
 
 function getSelectedCalendarRanges_(ss, sheet) {
@@ -207,21 +253,26 @@ function getSelectedCalendarRanges_(ss, sheet) {
   return [];
 }
 
-function showMarkProgress_(ss, targetSheetName, done, total) {
+function showMarkProgress_(ss, targetSheetName, done, total, stepLabel) {
+  const normalizedDone = Math.min(Math.max(Number(done) || 0, 0), Math.max(Number(total) || 0, 0));
+  const normalizedTotal = Math.max(Number(total) || 0, 0);
+  const percentage = normalizedTotal > 0 ? Math.floor((normalizedDone / normalizedTotal) * 100) : 0;
+  const stepText = stepLabel ? `${stepLabel} — ` : '';
+
   writeStatusCellMessage_(
     ss,
-    `Marking selected Calendar rows as ${targetSheetName}: ${done}/${total}`
+    `${stepText}Marking selected Calendar rows as ${targetSheetName}: ${normalizedDone}/${normalizedTotal} (${percentage}%)`
   );
+  SpreadsheetApp.flush();
 }
 
-function appendCalendarRowsToInvoicing_(calendarRows, invoicingSheet, invoicingStateSheet, progressCallback) {
-  const invoiceStore = readInvoicingState_(invoicingSheet, invoicingStateSheet);
+function appendCalendarRowsToInvoicing_(calendarRows, invoicingSheet, progressCallback) {
+  const invoiceStore = readInvoicingState_(invoicingSheet);
   const appendValues = [];
-  const appendStateValues = [];
-
   calendarRows.forEach((row, index) => {
     if (!invoiceStore.byEventKey.has(row.eventKey)) {
       appendValues.push([
+        row.eventKey,
         row.values[0],
         row.values[1],
         row.values[2],
@@ -233,24 +284,22 @@ function appendCalendarRowsToInvoicing_(calendarRows, invoicingSheet, invoicingS
         '',
         '',
       ]);
-      appendStateValues.push([row.eventKey]);
     }
 
     reportMarkProgress_(progressCallback, index + 1, calendarRows.length);
   });
 
-  appendInvoicingRows_(invoicingSheet, invoicingStateSheet, appendValues, appendStateValues);
+  appendInvoicingRows_(invoicingSheet, appendValues);
   return appendValues.length;
 }
 
-function appendCalendarRowsToNonBillable_(calendarRows, nonBillableSheet, nonBillableStateSheet, progressCallback) {
-  const nonBillableStore = readNonBillableState_(nonBillableSheet, nonBillableStateSheet);
+function appendCalendarRowsToNonBillable_(calendarRows, nonBillableSheet, progressCallback) {
+  const nonBillableStore = readNonBillableState_(nonBillableSheet);
   const appendValues = [];
-  const appendStateValues = [];
-
   calendarRows.forEach((row, index) => {
     if (!nonBillableStore.byEventKey.has(row.eventKey)) {
       appendValues.push([
+        row.eventKey,
         row.values[0],
         row.values[1],
         row.values[2],
@@ -259,13 +308,12 @@ function appendCalendarRowsToNonBillable_(calendarRows, nonBillableSheet, nonBil
         row.values[5],
         '',
       ]);
-      appendStateValues.push([row.eventKey]);
     }
 
     reportMarkProgress_(progressCallback, index + 1, calendarRows.length);
   });
 
-  appendNonBillableRows_(nonBillableSheet, nonBillableStateSheet, appendValues, appendStateValues);
+  appendNonBillableRows_(nonBillableSheet, appendValues);
   return appendValues.length;
 }
 
@@ -278,29 +326,28 @@ function reportMarkProgress_(progressCallback, done, total) {
   }
 }
 
-function removeRegisterRowsByEventKeys_(sheet, stateSheet, header, stateHeader, eventKeys) {
+function removeRegisterRowsByEventKeys_(sheet, header, eventKeys, progressCallback) {
   const keys = new Set((eventKeys || []).filter((key) => key));
   if (keys.size === 0) {
     return 0;
   }
 
-  const rowCount = Math.max(stateSheet.getLastRow() - 1, 0);
+  const rowCount = Math.max(sheet.getLastRow() - 1, 0);
   if (rowCount === 0) {
     return 0;
   }
 
-  const stateValues = stateSheet.getRange(2, 1, rowCount, stateHeader.length).getValues();
+  const eventIdValues = sheet.getRange(2, 1, rowCount, 1).getValues();
   let removedCount = 0;
 
-  for (let index = stateValues.length - 1; index >= 0; index -= 1) {
-    const eventKey = toText_(stateValues[index][0]);
-    if (!keys.has(eventKey)) {
-      continue;
+  for (let index = eventIdValues.length - 1; index >= 0; index -= 1) {
+    const eventKey = toText_(eventIdValues[index][0]);
+    if (keys.has(eventKey)) {
+      sheet.getRange(index + 2, 1, 1, header.length).deleteCells(SpreadsheetApp.Dimension.ROWS);
+      removedCount += 1;
     }
 
-    sheet.getRange(index + 2, 1, 1, header.length).deleteCells(SpreadsheetApp.Dimension.ROWS);
-    stateSheet.getRange(index + 2, 1, 1, stateHeader.length).deleteCells(SpreadsheetApp.Dimension.ROWS);
-    removedCount += 1;
+    reportMarkProgress_(progressCallback, eventIdValues.length - index, eventIdValues.length);
   }
 
   return removedCount;
