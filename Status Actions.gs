@@ -80,6 +80,7 @@ function markSelectedCalendarRows_(targetSheetName) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const spreadsheetId = ss.getId();
+    setProgress_(ss, `Preparing to mark selected Calendar rows ${getMarkActionLabel_(targetSheetName)}...`);
     const managedSheets = ensureManagedWorkbookStructure_(ss, spreadsheetId);
     const selectedRows = collectSelectedCalendarRows_(ss, managedSheets.sheet);
 

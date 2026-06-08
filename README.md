@@ -353,7 +353,7 @@ They are treated as workbook UI structures that must remain present and consiste
 
 ## Menu actions
 
-The custom menu contains:
+The `Invoicing` custom menu contains:
 
 - `Filter for` → `Open`, `Invoiced`, `Non-Billable`
 - `Mark` → `for Invoicing`, `as Non-Billable`

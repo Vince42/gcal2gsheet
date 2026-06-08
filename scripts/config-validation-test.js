@@ -73,6 +73,8 @@ assert.deepEqual(healedLegacyConfig.header, canonical.header);
 assert.deepEqual(healedLegacyConfig.invoicingHeader, canonical.invoicingHeader);
 assert.deepEqual(healedLegacyConfig.nonBillableHeader, canonical.nonBillableHeader);
 assert.equal(healedLegacyConfig.statusCell, 'J1');
+assert.equal(healedLegacyConfig.menu.title, 'Invoicing');
+assert.equal(healedLegacyConfig.toastTitle, 'Invoicing');
 assert.deepEqual(healedLegacyConfig.calendarNames, ['Event', 'dedc', 'EEC', 'CTG']);
 assert.equal(healedLegacyConfig.defaultCalendarName, 'Event');
 

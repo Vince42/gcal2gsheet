@@ -195,6 +195,62 @@ function ensureManagedIdColumnHidden_(sheet) {
 }
 
 
+function isCalendarTableMaintenanceRequest_(tableName, header) {
+  return !tableName && !header;
+}
+
+function captureSheetFilterCriteria_(sheet, columnCount) {
+  const filter = sheet.getFilter();
+  if (!filter) {
+    return { hadFilter: false, criteriaByColumn: [] };
+  }
+
+  const criteriaByColumn = [];
+  for (let column = 1; column <= columnCount; column += 1) {
+    criteriaByColumn[column] = filter.getColumnFilterCriteria(column);
+  }
+  return { hadFilter: true, criteriaByColumn };
+}
+
+function removeSheetFilterForTableUpdate_(sheet) {
+  const filter = sheet.getFilter();
+  if (filter) {
+    filter.remove();
+  }
+}
+
+function restoreSheetFilterCriteria_(sheet, filterSnapshot, rowCount, columnCount) {
+  if (!filterSnapshot || !filterSnapshot.hadFilter) {
+    return null;
+  }
+
+  const existingFilter = sheet.getFilter();
+  if (existingFilter) {
+    existingFilter.remove();
+  }
+
+  const filter = sheet.getRange(1, 1, rowCount, columnCount).createFilter();
+  (filterSnapshot.criteriaByColumn || []).forEach((criteria, column) => {
+    if (criteria && column > 0) {
+      filter.setColumnFilterCriteria(column, criteria);
+    }
+  });
+  return filter;
+}
+
+function updateTableWithFilterSafeBatch_(spreadsheetId, sheet, header, requests) {
+  const columnCount = header.length;
+  const rowCount = Math.max(sheet.getLastRow(), 1);
+  const filterSnapshot = captureSheetFilterCriteria_(sheet, columnCount);
+
+  removeSheetFilterForTableUpdate_(sheet);
+  try {
+    Sheets.Spreadsheets.batchUpdate({ requests }, spreadsheetId);
+  } finally {
+    restoreSheetFilterCriteria_(sheet, filterSnapshot, rowCount, columnCount);
+  }
+}
+
 function assertManagedTableHasInlineIdColumn_(header) {
   const firstColumn = header && header.length > 0 ? header[0] : '';
   if (firstColumn !== 'ID' && firstColumn !== 'EventID') {
@@ -214,61 +270,49 @@ function ensureTable_(spreadsheetId, sheet, tableName, header) {
   const tables = (sheetModel && sheetModel.tables) || [];
 
   if (tables.length === 0) {
-    Sheets.Spreadsheets.batchUpdate(
+    updateTableWithFilterSafeBatch_(spreadsheetId, sheet, effectiveHeader, [
       {
-        requests: [
-          {
-            addTable: {
-              table: {
-                name: effectiveTableName,
-                range: {
-                  sheetId: sheet.getSheetId(),
-                  startRowIndex: 0,
-                  endRowIndex: Math.max(sheet.getLastRow(), 1),
-                  startColumnIndex: 0,
-                  endColumnIndex: effectiveHeader.length,
-                },
-              },
+        addTable: {
+          table: {
+            name: effectiveTableName,
+            range: {
+              sheetId: sheet.getSheetId(),
+              startRowIndex: 0,
+              endRowIndex: Math.max(sheet.getLastRow(), 1),
+              startColumnIndex: 0,
+              endColumnIndex: effectiveHeader.length,
             },
           },
-        ],
+        },
       },
-      spreadsheetId
-    );
+    ]);
     return;
   }
 
   const table = tables.find((entry) => entry.name === effectiveTableName) || tables[0];
 
-  Sheets.Spreadsheets.batchUpdate(
+  updateTableWithFilterSafeBatch_(spreadsheetId, sheet, effectiveHeader, [
     {
-      requests: [
-        {
-          updateTable: {
-            table: {
-              tableId: table.tableId,
-              name: effectiveTableName,
-              range: {
-                sheetId: sheet.getSheetId(),
-                startRowIndex: 0,
-                endRowIndex: Math.max(sheet.getLastRow(), 1),
-                startColumnIndex: 0,
-                endColumnIndex: effectiveHeader.length,
-              },
-            },
-            fields: 'name,range',
+      updateTable: {
+        table: {
+          tableId: table.tableId,
+          name: effectiveTableName,
+          range: {
+            sheetId: sheet.getSheetId(),
+            startRowIndex: 0,
+            endRowIndex: Math.max(sheet.getLastRow(), 1),
+            startColumnIndex: 0,
+            endColumnIndex: effectiveHeader.length,
           },
         },
-      ],
+        fields: 'name,range',
+      },
     },
-    spreadsheetId
-  );
+  ]);
 }
 
 function ensureTableRange_(spreadsheetId, sheet, tableName, header) {
-  if (!tableName && !header) {
-    ensureCalendarStartDateFilter_(sheet);
-  }
+  const shouldEnsureCalendarFilter = isCalendarTableMaintenanceRequest_(tableName, header);
   const effectiveTableName = tableName || CONFIG.tableName;
   const effectiveHeader = header || CONFIG.header;
   assertManagedTableHasInlineIdColumn_(effectiveHeader);
@@ -283,6 +327,9 @@ function ensureTableRange_(spreadsheetId, sheet, tableName, header) {
 
   if (!table) {
     ensureTable_(spreadsheetId, sheet, effectiveTableName, effectiveHeader);
+    if (shouldEnsureCalendarFilter) {
+      ensureCalendarStartDateFilter_(sheet);
+    }
     return;
   }
 
@@ -297,32 +344,34 @@ function ensureTableRange_(spreadsheetId, sheet, tableName, header) {
     currentRange.endColumnIndex === effectiveHeader.length;
 
   if (unchanged) {
+    if (shouldEnsureCalendarFilter) {
+      ensureCalendarStartDateFilter_(sheet);
+    }
     return;
   }
 
-  Sheets.Spreadsheets.batchUpdate(
+  updateTableWithFilterSafeBatch_(spreadsheetId, sheet, effectiveHeader, [
     {
-      requests: [
-        {
-          updateTable: {
-            table: {
-              tableId: table.tableId,
-              name: table.name,
-              range: {
-                sheetId: sheet.getSheetId(),
-                startRowIndex: 0,
-                endRowIndex: desiredEndRow,
-                startColumnIndex: 0,
-                endColumnIndex: effectiveHeader.length,
-              },
-            },
-            fields: 'range',
+      updateTable: {
+        table: {
+          tableId: table.tableId,
+          name: table.name,
+          range: {
+            sheetId: sheet.getSheetId(),
+            startRowIndex: 0,
+            endRowIndex: desiredEndRow,
+            startColumnIndex: 0,
+            endColumnIndex: effectiveHeader.length,
           },
         },
-      ],
+        fields: 'range',
+      },
     },
-    spreadsheetId
-  );
+  ]);
+
+  if (shouldEnsureCalendarFilter) {
+    ensureCalendarStartDateFilter_(sheet);
+  }
 }
 
 

@@ -143,4 +143,95 @@ assert.equal(ensuredFilter.getRange().getNumRows(), 10);
 context.ensureCalendarStartDateFilter_(resizedSheet);
 assert.deepEqual(createdFilter.getColumnFilterCriteria(4), { formula: '=$D2>=DATE(2024,1,1)' });
 
+
+function mockSheetFilterForTable(range, criteriaByColumn) {
+  return mockFilter(range, criteriaByColumn || {});
+}
+
+let tableModel = {
+  sheets: [
+    {
+      properties: { sheetId: 42, title: 'Calendar' },
+      tables: [],
+    },
+  ],
+};
+let batchRequests = [];
+let tableUpdateFilter;
+let restoredFilter;
+context.Sheets = {
+  Spreadsheets: {
+    get() {
+      return tableModel;
+    },
+    batchUpdate(body) {
+      assert.equal(tableUpdateFilter.removed, true);
+      batchRequests.push(body.requests);
+    },
+  },
+};
+
+function mockTableSheet() {
+  return {
+    filter: null,
+    hiddenColumns: [],
+    getSheetId() { return 42; },
+    getLastRow() { return 10; },
+    hideColumns(column) { this.hiddenColumns.push(column); },
+    getFilter() { return this.filter && !this.filter.removed ? this.filter : null; },
+    getRange(row, column, numRows, numColumns) {
+      return mockRange(row, column, numRows, numColumns, (range) => {
+        restoredFilter = mockFilter(range, {});
+        this.filter = restoredFilter;
+        return restoredFilter;
+      });
+    },
+  };
+}
+
+const tableSheet = mockTableSheet();
+tableUpdateFilter = mockSheetFilterForTable(
+  mockRange(1, 1, 10, calendarHeader.length, () => null),
+  { 8: statusCriteria }
+);
+tableSheet.filter = tableUpdateFilter;
+context.ensureTable_('spreadsheet-id', tableSheet);
+assert.equal(batchRequests.length, 1);
+assert(batchRequests[0][0].addTable);
+assert.equal(restoredFilter.getColumnFilterCriteria(8), statusCriteria);
+assert.equal(restoredFilter.getRange().getNumRows(), 10);
+
+tableModel = {
+  sheets: [
+    {
+      properties: { sheetId: 42, title: 'Calendar' },
+      tables: [
+        {
+          tableId: 'tbl1',
+          name: 'Calendar',
+          range: {
+            sheetId: 42,
+            startRowIndex: 0,
+            endRowIndex: 5,
+            startColumnIndex: 0,
+            endColumnIndex: calendarHeader.length,
+          },
+        },
+      ],
+    },
+  ],
+};
+batchRequests = [];
+restoredFilter = null;
+tableUpdateFilter = mockSheetFilterForTable(
+  mockRange(1, 1, 5, calendarHeader.length, () => null),
+  { 8: statusCriteria }
+);
+tableSheet.filter = tableUpdateFilter;
+context.ensureTableRange_('spreadsheet-id', tableSheet);
+assert.equal(batchRequests.length, 1);
+assert(batchRequests[0][0].updateTable);
+assert.equal(restoredFilter.getColumnFilterCriteria(4).formula, '=$D2>=DATE(2024,1,1)');
+assert.equal(restoredFilter.getColumnFilterCriteria(8), statusCriteria);
+
 console.log('table-service-test: PASS');

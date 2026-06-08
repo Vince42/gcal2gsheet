@@ -96,11 +96,11 @@ const DEFAULT_CONFIG = Object.freeze({
   },
 
   menu: {
-    title: 'Calendar Import',
+    title: 'Invoicing',
     item: 'Update calendar sheet',
   },
 
-  toastTitle: 'Calendar import',
+  toastTitle: 'Invoicing',
 });
 
 const CONFIG_SHEET_SPEC = Object.freeze({
@@ -606,6 +606,7 @@ function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
 
   normalizeManagedHeaderConfigKeys_(normalized);
   normalizeStatusCellForCurrentManagedLayout_(normalized);
+  normalizeLegacyMenuConfigForCurrentProduct_(normalized);
 
   OBSOLETE_STATE_CONFIG_KEYS.forEach((key) => {
     delete normalized[key];
@@ -618,7 +619,19 @@ function normalizeConfigOverrideForCurrentSchema_(overrideConfig) {
   return normalized;
 }
 
+function normalizeLegacyMenuConfigForCurrentProduct_(normalizedConfig) {
+  if (
+    normalizedConfig.menu &&
+    typeof normalizedConfig.menu === 'object' &&
+    toText_(normalizedConfig.menu.title).trim() === 'Calendar Import'
+  ) {
+    normalizedConfig.menu.title = DEFAULT_CONFIG.menu.title;
+  }
 
+  if (toText_(normalizedConfig.toastTitle).trim() === 'Calendar import') {
+    normalizedConfig.toastTitle = DEFAULT_CONFIG.toastTitle;
+  }
+}
 
 function normalizeStatusCellForCurrentManagedLayout_(normalizedConfig) {
   if (!Object.prototype.hasOwnProperty.call(normalizedConfig, 'statusCell')) {
