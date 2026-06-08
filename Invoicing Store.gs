@@ -99,7 +99,7 @@ function normalizeCalendarInvoiceValues_(rowValues) {
 
 function isLegacyCalendarStatusValue_(value) {
   const text = toText_(value).trim();
-  return text === 'Open' || text === 'Invoiced' || text === 'Non-billable';
+  return text === 'Open' || text === 'Invoiced' || text === 'Invoicing' || text === 'Non-billable';
 }
 
 function hasInvoiceRegisterData_(rowValues) {

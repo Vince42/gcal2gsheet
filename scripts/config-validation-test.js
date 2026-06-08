@@ -16,7 +16,7 @@ function mergedConfig(overrides) {
 }
 
 const canonical = mergedConfig({});
-assert.deepEqual(canonical.header, ['ID', 'Calendar', 'Event', 'Date', 'Start', 'End', 'Duration', 'Status']);
+assert.deepEqual(canonical.header, ['ID', 'Calendar', 'Event', 'Date', 'Start', 'End', 'Duration', 'State']);
 assert.deepEqual(canonical.invoicingHeader, ['EventID', 'Calendar', 'Event', 'Date', 'Start', 'End', 'Duration', 'Customer', 'Project', 'InvoiceNumber', 'InvoiceDate']);
 assert.deepEqual(canonical.nonBillableHeader, ['EventID', 'Calendar', 'Event', 'Date', 'Start', 'End', 'Duration', 'Reason']);
 

@@ -73,7 +73,7 @@ function applyRegisterStatusesToImportedEvents_(currentByKey, invoiceStore, nonB
     const invoice = invoicesByEventKey.get(eventKey);
     if (invoice) {
       eventObj.invoiceNumber = invoice.invoiceNumber || 'INVOICED';
-      eventObj.values[6] = 'Invoiced';
+      eventObj.values[6] = 'Invoicing';
       return;
     }
 

@@ -8,6 +8,16 @@ const LEGACY_CALENDAR_HEADER = Object.freeze([
   'Status',
 ]);
 
+const DEFAULT_CALENDAR_HEADER = Object.freeze([
+  'Calendar',
+  'Event',
+  'Date',
+  'Start',
+  'End',
+  'Duration',
+  'State',
+]);
+
 const LEGACY_INVOICING_HEADER = Object.freeze([
   'Calendar',
   'Event',
@@ -31,7 +41,7 @@ const LEGACY_NON_BILLABLE_HEADER = Object.freeze([
   'Reason',
 ]);
 
-const DEFAULT_HEADER = Object.freeze(['ID'].concat(LEGACY_CALENDAR_HEADER));
+const DEFAULT_HEADER = Object.freeze(['ID'].concat(DEFAULT_CALENDAR_HEADER));
 
 const DEFAULT_INVOICING_HEADER = Object.freeze(['EventID'].concat(LEGACY_INVOICING_HEADER));
 

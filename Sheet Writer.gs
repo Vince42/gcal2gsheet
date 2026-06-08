@@ -1,3 +1,54 @@
+function validateCalendarRowsForWrite_(rows) {
+  const failures = [];
+  (rows || []).forEach((row, index) => {
+    const sheetRow = index + 2;
+    const rowValues = row && row.values ? row.values : [];
+    const missing = [];
+
+    if (!toText_(row && row.eventKey).trim()) {
+      missing.push('ID');
+    }
+    collectMissingCalendarRequiredFields_(rowValues).forEach((fieldName) => missing.push(fieldName));
+
+    if (missing.length > 0) {
+      failures.push(`row ${sheetRow}: ${missing.join(', ')}`);
+    }
+  });
+
+  if (failures.length > 0) {
+    throw new Error(
+      `Calendar import validation failed before writing. Required cells must not be empty or invalid: ${failures.slice(0, 20).join('; ')}${failures.length > 20 ? `; ... and ${failures.length - 20} more` : ''}. The sheet was left unchanged so the incomplete retrieval cannot overwrite existing data.`
+    );
+  }
+}
+
+function collectMissingCalendarRequiredFields_(rowValues) {
+  const missing = [];
+  const fieldChecks = [
+    { name: 'Calendar', index: 0, valid: (value) => toText_(value).trim() !== '' },
+    { name: 'Event', index: 1, valid: (value) => toText_(value).trim() !== '' },
+    { name: 'Date', index: 2, valid: isValidDateCellValue_ },
+    { name: 'Start', index: 3, valid: isValidDateCellValue_ },
+    { name: 'End', index: 4, valid: isValidDateCellValue_ },
+    { name: 'Duration', index: 5, valid: isValidDurationCellValue_ },
+  ];
+
+  fieldChecks.forEach((check) => {
+    if (!check.valid(rowValues[check.index])) {
+      missing.push(check.name);
+    }
+  });
+  return missing;
+}
+
+function isValidDateCellValue_(value) {
+  return Object.prototype.toString.call(value) === '[object Date]' && !Number.isNaN(value.getTime());
+}
+
+function isValidDurationCellValue_(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
 function writeVisibleBody_(sheet, rows) {
   const oldLastRow = sheet.getLastRow();
   const neededLastRow = Math.max(rows.length + 1, 1);
@@ -14,22 +65,30 @@ function writeVisibleBody_(sheet, rows) {
   }
 
   if (rows.length > 0) {
-    const values = rows.map((row, index) => {
-      const rowValues = [row.eventKey || ''].concat(row.values.slice());
-      const statusIndex = CONFIG.header.indexOf('Status');
-      if (statusIndex >= 0) {
-        rowValues[statusIndex] = buildStatusFormula_(index + 2);
-      }
-      return rowValues;
-    });
+    const values = rows.map((row) => [row.eventKey || ''].concat(row.values.slice()));
     sheet.getRange(2, 1, rows.length, CONFIG.header.length).setValues(values);
   }
+
+  writeStateFormulas_(sheet, Math.max(rows.length, clearRows));
 }
 
-function buildStatusFormula_(rowNumber) {
+function writeStateFormulas_(sheet, rowCount) {
+  const stateIndex = CONFIG.header.indexOf('State');
+  if (stateIndex < 0 || rowCount <= 0) {
+    return;
+  }
+
+  const formulas = [];
+  for (let index = 0; index < rowCount; index += 1) {
+    formulas.push([buildStateFormula_(index + 2)]);
+  }
+  sheet.getRange(2, stateIndex + 1, rowCount, 1).setFormulas(formulas);
+}
+
+function buildStateFormula_(rowNumber) {
   const invoicingSheetName = escapeSheetNameForFormula_(CONFIG.invoicingSheetName);
   const nonBillableSheetName = escapeSheetNameForFormula_(CONFIG.nonBillableSheetName);
-  return `=IF(COUNTIF('${invoicingSheetName}'!$A:$A,$A${rowNumber})>0,"Invoiced",IF(COUNTIF('${nonBillableSheetName}'!$A:$A,$A${rowNumber})>0,"Non-billable","Open"))`;
+  return `=IF(COUNTIF('${invoicingSheetName}'!$A:$A,$A${rowNumber})>0,"Invoicing",IF(COUNTIF('${nonBillableSheetName}'!$A:$A,$A${rowNumber})>0,"Non-billable","Open"))`;
 }
 
 function escapeSheetNameForFormula_(sheetName) {

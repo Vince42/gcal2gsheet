@@ -28,6 +28,7 @@ rg -n "setFontFamily\('Courier New'\)" Config.gs >/dev/null
 rg -n "calendarNames: \['Calendar'\]" Config.gs >/dev/null
 rg -n "defaultCalendarName: 'Calendar'" Config.gs >/dev/null
 rg -n "invoicingSheetName: 'Invoicing'" Config.gs >/dev/null
+rg -n "'State'" Config.gs >/dev/null
 rg -n "'Status'" Config.gs >/dev/null
 rg -n "nonBillableSheetName: 'Non-Billable'" Config.gs >/dev/null
 rg -n "nonBillableTableName: 'NonBillable'" Config.gs >/dev/null
@@ -35,6 +36,7 @@ rg -n "function assertValidTableName_" Config.gs >/dev/null
 rg -n "ensureManagedWorkbookStructure_" "Table Service.gs" >/dev/null
 rg -n "resolveLegacyStateSheet_" "Table Service.gs" >/dev/null
 node scripts/table-service-test.js
+node scripts/sheet-writer-test.js
 rg -n "assertSheetHasExpectedColumns_" "Table Service.gs" >/dev/null
 rg -n "isSheetBlankForManagedHeader_" "Table Service.gs" >/dev/null
 rg -n "allowOverwrite: false" "Table Service.gs" >/dev/null
@@ -43,7 +45,7 @@ rg -n "migrateCalendarInvoicesToInvoicing_" "Invoicing Store.gs" >/dev/null
 rg -n "repairInvoicingStateFromImportedEvents_" "Invoicing Store.gs" >/dev/null
 rg -n "readNonBillableState_" "Non Billable Store.gs" >/dev/null
 rg -n "applyRegisterStatusesToImportedEvents_" "Non Billable Store.gs" >/dev/null
-rg -n "buildStatusFormula_" "Sheet Writer.gs" >/dev/null
+rg -n "buildStateFormula_" "Sheet Writer.gs" >/dev/null
 rg -n "Filter for" Code.gs >/dev/null
 rg -n "ui\.createMenu\('Mark'\)" Code.gs >/dev/null
 rg -n "markSelectedCalendarRowsAsInvoiced" "Status Actions.gs" >/dev/null

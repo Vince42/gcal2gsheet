@@ -62,7 +62,7 @@ function ensureMenuVisible_(ui) {
       .addSubMenu(
         ui.createMenu('Filter for')
           .addItem('Open', 'filterCalendarForOpen')
-          .addItem('Invoiced', 'filterCalendarForInvoiced')
+          .addItem('Invoicing', 'filterCalendarForInvoiced')
           .addItem('Non-Billable', 'filterCalendarForNonBillable')
       )
       .addSubMenu(
@@ -79,7 +79,7 @@ function ensureMenuVisible_(ui) {
       .addSubMenu(
         ui.createMenu('Filter for')
           .addItem('Open', 'filterCalendarForOpen')
-          .addItem('Invoiced', 'filterCalendarForInvoiced')
+          .addItem('Invoicing', 'filterCalendarForInvoiced')
           .addItem('Non-Billable', 'filterCalendarForNonBillable')
       )
       .addSubMenu(
@@ -114,86 +114,96 @@ function updateCalendarSheets() {
     const invoicingSheet = managedSheets.invoicingSheet;
     const nonBillableSheet = managedSheets.nonBillableSheet;
 
-    const migratedInvoiceCount = migrateCalendarInvoicesToInvoicing_(sheet, invoicingSheet);
-    const repairedInvoiceStateCount = repairInvoicingStateFromCalendarRows_(sheet, invoicingSheet);
+    const filterStates = captureManagedSheetFilterState_([sheet, invoicingSheet, nonBillableSheet]);
+    removeManagedSheetFilters_(filterStates);
 
-    clearRetiredCalendarInvoiceColumns_(sheet);
+    try {
+      const migratedInvoiceCount = migrateCalendarInvoicesToInvoicing_(sheet, invoicingSheet);
+      const repairedInvoiceStateCount = repairInvoicingStateFromCalendarRows_(sheet, invoicingSheet);
 
-    setProgress_(ss, 'Performing full import for self-healing reconciliation...');
-    const fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
-    const repairedImportedInvoiceStateCount = repairInvoicingStateFromImportedEvents_(
-      fetchResult.currentByKey,
-      invoicingSheet
-    );
-    const repairedNonBillableStateCount = repairNonBillableStateFromImportedEvents_(
-      fetchResult.currentByKey,
-      nonBillableSheet
-    );
-    const invoiceStore = readInvoicingState_(invoicingSheet);
-    const nonBillableStore = readNonBillableState_(nonBillableSheet);
-    applyRegisterStatusesToImportedEvents_(fetchResult.currentByKey, invoiceStore, nonBillableStore);
+      clearRetiredCalendarInvoiceColumns_(sheet);
 
-    setProgress_(ss, 'Reading existing sheet state...');
-    const existingState = readExistingState_(sheet, timeZone, scope, invoiceStore, nonBillableStore);
+      setProgress_(ss, 'Performing full import for self-healing reconciliation...');
+      const fetchResult = fetchFullSnapshot_(ss, calendars, timeZone, scope);
 
-    setProgress_(ss, 'Rebuilding worksheet data...');
-    let finalRows = rebuildFromFullSnapshot_(
-      existingState,
-      fetchResult.currentByKey,
-      scope
-    );
-
-    setProgress_(ss, 'Removing duplicates...');
-    finalRows = removeManagedDuplicates_(finalRows, scope);
-
-    setProgress_(ss, `Writing ${finalRows.length} row(s)...`);
-    writeVisibleBody_(sheet, finalRows);
-    applyNumberFormats_(sheet);
-    applyNumberFormats_(invoicingSheet, CONFIG.invoicingHeader);
-    applyNumberFormats_(nonBillableSheet, CONFIG.nonBillableHeader);
-    applyRowColors_(sheet, finalRows);
-    ensureTableRange_(spreadsheetId, sheet);
-    ensureTableRange_(spreadsheetId, invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
-    ensureTableRange_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
-
-    saveSyncTokens_(fetchResult.nextSyncTokens);
-
-    const ignoredBeforeImportStartCount = existingState.ignoredBeforeImportStartCount || 0;
-    if (ignoredBeforeImportStartCount > 0) {
-      showToastMessage_(
-        ss,
-        `${ignoredBeforeImportStartCount} row(s) before ${CONFIG.importStartDate} were excluded from this update and left unchanged.`,
-        { severity: 'info' }
+      setProgress_(ss, 'Validating imported row completeness...');
+      validateCalendarRowsForWrite_(Array.from(fetchResult.currentByKey.values()));
+      const repairedImportedInvoiceStateCount = repairInvoicingStateFromImportedEvents_(
+        fetchResult.currentByKey,
+        invoicingSheet
       );
-    }
-
-    if (migratedInvoiceCount > 0) {
-      showToastMessage_(
-        ss,
-        `${migratedInvoiceCount} invoiced row(s) were moved to the Invoicing register.`,
-        { severity: 'info' }
+      const repairedNonBillableStateCount = repairNonBillableStateFromImportedEvents_(
+        fetchResult.currentByKey,
+        nonBillableSheet
       );
-    }
+      const invoiceStore = readInvoicingState_(invoicingSheet);
+      const nonBillableStore = readNonBillableState_(nonBillableSheet);
+      applyRegisterStatusesToImportedEvents_(fetchResult.currentByKey, invoiceStore, nonBillableStore);
 
-    const totalRepairedInvoiceStateCount = repairedInvoiceStateCount + repairedImportedInvoiceStateCount;
-    if (totalRepairedInvoiceStateCount > 0) {
-      showToastMessage_(
-        ss,
-        `${totalRepairedInvoiceStateCount} Invoicing row(s) were linked to calendar events.`,
-        { severity: 'info' }
+      setProgress_(ss, 'Reading existing sheet state...');
+      const existingState = readExistingState_(sheet, timeZone, scope, invoiceStore, nonBillableStore);
+
+      setProgress_(ss, 'Rebuilding worksheet data...');
+      let finalRows = rebuildFromFullSnapshot_(
+        existingState,
+        fetchResult.currentByKey,
+        scope
       );
-    }
 
-    if (repairedNonBillableStateCount > 0) {
-      showToastMessage_(
-        ss,
-        `${repairedNonBillableStateCount} Non-Billable row(s) were linked to calendar events.`,
-        { severity: 'info' }
-      );
-    }
+      setProgress_(ss, 'Removing duplicates...');
+      finalRows = removeManagedDuplicates_(finalRows, scope);
 
-    setProgress_(ss, 'Done.');
-    showToastMessage_(ss, 'Calendar import finished.', { severity: 'info' });
+      setProgress_(ss, `Writing ${finalRows.length} row(s)...`);
+      writeVisibleBody_(sheet, finalRows);
+      applyNumberFormats_(sheet);
+      applyNumberFormats_(invoicingSheet, CONFIG.invoicingHeader);
+      applyNumberFormats_(nonBillableSheet, CONFIG.nonBillableHeader);
+      applyRowColors_(sheet, finalRows);
+      ensureTableRange_(spreadsheetId, sheet);
+      ensureTableRange_(spreadsheetId, invoicingSheet, CONFIG.invoicingTableName, CONFIG.invoicingHeader);
+      ensureTableRange_(spreadsheetId, nonBillableSheet, CONFIG.nonBillableTableName, CONFIG.nonBillableHeader);
+
+      saveSyncTokens_(fetchResult.nextSyncTokens);
+
+      const ignoredBeforeImportStartCount = existingState.ignoredBeforeImportStartCount || 0;
+      if (ignoredBeforeImportStartCount > 0) {
+        showToastMessage_(
+          ss,
+          `${ignoredBeforeImportStartCount} row(s) before ${CONFIG.importStartDate} were excluded from this update and left unchanged.`,
+          { severity: 'info' }
+        );
+      }
+
+      if (migratedInvoiceCount > 0) {
+        showToastMessage_(
+          ss,
+          `${migratedInvoiceCount} invoiced row(s) were moved to the Invoicing register.`,
+          { severity: 'info' }
+        );
+      }
+
+      const totalRepairedInvoiceStateCount = repairedInvoiceStateCount + repairedImportedInvoiceStateCount;
+      if (totalRepairedInvoiceStateCount > 0) {
+        showToastMessage_(
+          ss,
+          `${totalRepairedInvoiceStateCount} Invoicing row(s) were linked to calendar events.`,
+          { severity: 'info' }
+        );
+      }
+
+      if (repairedNonBillableStateCount > 0) {
+        showToastMessage_(
+          ss,
+          `${repairedNonBillableStateCount} Non-Billable row(s) were linked to calendar events.`,
+          { severity: 'info' }
+        );
+      }
+
+      setProgress_(ss, 'Done.');
+      showToastMessage_(ss, 'Calendar import finished.', { severity: 'info' });
+    } finally {
+      restoreManagedSheetFilters_(filterStates);
+    }
   } finally {
     restoreUiState_(ss, uiState);
     lock.releaseLock();

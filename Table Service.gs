@@ -472,3 +472,37 @@ function getSpreadsheetModel_(spreadsheetId) {
     includeGridData: false,
   });
 }
+
+function captureManagedSheetFilterState_(sheets) {
+  return (sheets || [])
+    .filter((sheet) => sheet)
+    .map((sheet) => ({
+      sheet,
+      columnCount: getManagedSheetFilterColumnCount_(sheet),
+      snapshot: captureSheetFilterCriteria_(sheet, getManagedSheetFilterColumnCount_(sheet)),
+    }));
+}
+
+function removeManagedSheetFilters_(filterStates) {
+  (filterStates || []).forEach((state) => {
+    removeSheetFilterForTableUpdate_(state.sheet);
+  });
+}
+
+function restoreManagedSheetFilters_(filterStates) {
+  (filterStates || []).forEach((state) => {
+    const rowCount = Math.max(state.sheet.getLastRow(), 1);
+    restoreSheetFilterCriteria_(state.sheet, state.snapshot, rowCount, state.columnCount);
+  });
+}
+
+function getManagedSheetFilterColumnCount_(sheet) {
+  const name = sheet.getName();
+  if (name === CONFIG.invoicingSheetName) {
+    return CONFIG.invoicingHeader.length;
+  }
+  if (name === CONFIG.nonBillableSheetName) {
+    return CONFIG.nonBillableHeader.length;
+  }
+  return CONFIG.header.length;
+}

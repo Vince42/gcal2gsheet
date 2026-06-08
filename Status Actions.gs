@@ -3,7 +3,7 @@ function filterCalendarForOpen() {
 }
 
 function filterCalendarForInvoiced() {
-  filterCalendarByStatus_('Invoiced');
+  filterCalendarByStatus_('Invoicing');
 }
 
 function filterCalendarForNonBillable() {
@@ -27,9 +27,9 @@ function filterCalendarByStatus_(statusValue) {
   const managedSheets = ensureManagedWorkbookStructure_(ss, spreadsheetId);
   const sheet = managedSheets.sheet;
 
-  const statusColumn = CONFIG.header.indexOf('Status') + 1;
+  const statusColumn = CONFIG.header.indexOf('State') + 1;
   if (statusColumn <= 0) {
-    throw new Error('Calendar Status column is not configured.');
+    throw new Error('Calendar State column is not configured.');
   }
 
   clearManualCalendarStatusFilter_(sheet);

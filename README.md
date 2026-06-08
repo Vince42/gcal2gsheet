@@ -16,7 +16,7 @@ The script is designed to:
 - expand recurring events into normal event instances
 - ignore future events
 - preserve historical rows before a configured start date
-- preserve invoiced rows
+- preserve invoicing rows
 - remove duplicates according to calendar precedence rules
 - keep all date and time values as real spreadsheet values
 - preserve a native Google Sheets table object on the visible worksheet
@@ -52,12 +52,12 @@ It contains exactly these columns in this order:
 5. `Start`
 6. `End`
 7. `Duration`
-8. `Status`
+8. `State`
 
-`Status` is a formula derived from the hidden `ID` column and the durable register sheets' hidden `EventID` columns. The normal states are:
+`State` is a formula derived from the hidden `ID` column and the durable register sheets' hidden `EventID` columns. The normal states are:
 
 - `Open` — no matching register row exists yet
-- `Invoiced` — the event is listed in `Invoicing`
+- `Invoicing` — the event is listed in `Invoicing`
 - `Non-billable` — the event is listed in `Non-Billable`
 
 ### Invoicing worksheet
@@ -169,7 +169,7 @@ The rebuild strategy is:
 7. remove duplicates among imported events
 8. merge imported events with existing rows
 9. migrate legacy invoice data from old `Calendar` invoice columns into `Invoicing` when needed
-10. mark imported rows as `Invoiced`, `Non-billable`, or `Open` by looking up their hidden `ID` in register `EventID` columns
+10. mark imported rows as `Invoicing`, `Non-billable`, or `Open` by looking up their hidden `ID` in register `EventID` columns
 11. remove duplicates again on eligible final rows
 12. rewrite the managed `Calendar` sheet in bulk
 13. refresh number formats, row colors, hidden ID columns, and the table ranges
@@ -178,7 +178,7 @@ This keeps row identity inside managed table rows and favors correctness over mi
 
 ---
 
-## Status logic
+## State logic
 
 ### Open rows
 
@@ -188,9 +188,9 @@ A calendar row is `Open` if:
 
 Open rows are updated silently in place when the matching calendar event changes.
 
-### Invoiced rows
+### Invoicing rows
 
-A calendar row is `Invoiced` if:
+A calendar row is `Invoicing` if:
 
 - its hidden `ID` exists in the `Invoicing` register's `EventID` column
 
@@ -202,7 +202,7 @@ A calendar row is `Non-billable` if:
 
 This name is preferred over `Non-Invoicing` because it describes the business decision: the event should not be billed.
 
-If an invoiced or non-billable event changes in Google Calendar, the single `Calendar` import row is updated from Google Calendar and keeps its register-derived status. No duplicate follow-up row is created.
+If an invoicing or non-billable event changes in Google Calendar, the single `Calendar` import row is updated from Google Calendar and keeps its register-derived state. No duplicate follow-up row is created.
 
 ### Invoice date
 
@@ -232,15 +232,15 @@ Do not store per-event business information in columns adjacent to either manage
 
 ---
 
-## Architecture: separate status registers
+## Architecture: separate state registers
 
-The status model treats the Calendar import as a reproducible source view and business decisions as durable register records:
+The state model treats the Calendar import as a reproducible source view and business decisions as durable register records:
 
 1. Keep `Calendar` as an import/review table that is always rebuilt from Google Calendar.
-2. Keep `Invoicing` as the invoice register table, with one row per invoiced event.
+2. Keep `Invoicing` as the invoice register table, with one row per invoicing event.
 3. Keep `Non-Billable` as the non-billable register table, with one row per event that should not be billed.
 4. Store stable event identity (`EventKey`, built from calendar ID and event ID) in hidden first-column `ID` / `EventID` values.
-5. Mark imported calendar rows as `Invoiced`, `Non-billable`, or `Open` by looking up their hidden `ID` in register `EventID` columns.
+5. Mark imported calendar rows as `Invoicing`, `Non-billable`, or `Open` by looking up their hidden `ID` in register `EventID` columns.
 6. Preserve business metadata in register sheets, not in cells that can disappear during import-table repair.
 
 Invoice register columns:
@@ -266,7 +266,7 @@ Non-billable register columns:
 - `Duration`
 - `Reason`
 
-With this model, a deleted import row is harmless: the full import recreates the calendar row, and the register sheets mark it with the correct status again by `EventKey`. If the calendar event later changes, the single Calendar import row updates from Google Calendar while its register-derived status remains intact.
+With this model, a deleted import row is harmless: the full import recreates the calendar row, and the register sheets mark it with the correct state again by `EventKey`. If the calendar event later changes, the single Calendar import row updates from Google Calendar while its register-derived state remains intact.
 
 ---
 
@@ -330,7 +330,7 @@ Formats:
 
 ### Row colors
 
-Rows are no longer color-encoded by status. The `Status` column is the source of truth, and update runs reset the managed `Calendar` rows to the normal font color.
+Rows are no longer color-encoded by state. The `State` column is the source of truth, and update runs reset the managed `Calendar` rows to the normal font color.
 
 ---
 
@@ -355,12 +355,12 @@ They are treated as workbook UI structures that must remain present and consiste
 
 The `Invoicing` custom menu contains:
 
-- `Filter for` → `Open`, `Invoiced`, `Non-Billable`
+- `Filter for` → `Open`, `Invoicing`, `Non-Billable`
 - `Mark` → `for Invoicing`, `as Non-Billable`
 
-`Filter for` applies a `Status` filter on the `Calendar` sheet and leaves any existing date/start filter criteria in place. If the native table filter cannot be controlled directly, the script falls back to hiding non-matching rows while keeping date-filtered rows hidden.
+`Filter for` applies a `State` filter on the `Calendar` sheet and leaves any existing date/start filter criteria in place. If the native table filter cannot be controlled directly, the script falls back to hiding non-matching rows while keeping date-filtered rows hidden.
 
-`Mark` reads the currently selected `Calendar` rows and appends those rows to the selected durable register. Selections may be adjacent or non-adjacent; if cells B5, C7, D7, and E10 are selected, rows 5, 7, and 10 are marked. After the register state is written, the `Status` formula changes those rows to the corresponding status.
+`Mark` reads the currently selected `Calendar` rows and appends those rows to the selected durable register. Selections may be adjacent or non-adjacent; if cells B5, C7, D7, and E10 are selected, rows 5, 7, and 10 are marked. After the register state is written, the `State` formula changes those rows to the corresponding state.
 
 ---
 
@@ -369,7 +369,7 @@ The `Invoicing` custom menu contains:
 During execution, progress is written to:
 
 - toast notifications
-- the configured status cell on the `Calendar` sheet (`CONFIG.statusCell`)
+- the configured status/progress cell on the `Calendar` sheet (`CONFIG.statusCell`)
 
 This gives the user visible runtime feedback without using modal dialogs during processing.
 
@@ -503,7 +503,7 @@ Possible future extensions:
 - test harness for pure logic modules
 - optional incremental sync mode
 - import of Google Calendar description field in addition to event title
-- configurable status cell
+- configurable status/progress cell
 - stricter validation of manual row edits
 
 ---
